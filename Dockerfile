@@ -39,7 +39,6 @@ RUN mkdir -p bin && ln -s /usr/local/bin/gowa bin/gowa
 
 # Create runtime directories and declare as volumes for persistence
 RUN mkdir -p logs storages statics
-VOLUME ["/app/storages", "/app/statics", "/app/logs"]
 
 EXPOSE 8080
 
