@@ -6,8 +6,16 @@ from db.repositories import config_repo
 
 
 def get_data_dir() -> Path:
-    """Return the application data directory (project root)."""
-    data_dir = Path(__file__).resolve().parent.parent
+    """Return the application data directory.
+
+    Checks WHATSBOT_DATA_DIR env var first (for Railway/Docker volume mounts).
+    Falls back to the project root for local/single-tenant mode.
+    """
+    env_dir = os.environ.get("WHATSBOT_DATA_DIR", "")
+    if env_dir:
+        data_dir = Path(env_dir)
+    else:
+        data_dir = Path(__file__).resolve().parent.parent
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 
@@ -59,8 +67,8 @@ DEFAULT_CONFIG = {
 
 
 class Settings:
-    def __init__(self):
-        self.data_dir = get_data_dir()
+    def __init__(self, data_dir: Path | None = None):
+        self.data_dir = data_dir or get_data_dir()
         self.logs_dir = self.data_dir / "logs"
         self.logs_dir.mkdir(exist_ok=True)
         self._config: dict = {}

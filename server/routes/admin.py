@@ -1,0 +1,238 @@
+"""Superadmin API routes for managing tenants and global SaaS settings."""
+
+import logging
+import time
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+from db.repositories import tenant_repo
+from server.auth import generate_salt, hash_password, generate_token
+from server.helpers import _ok, _err
+from server.tenant import current_tenant_slug
+
+logger = logging.getLogger(__name__)
+
+
+def _require_superadmin(request: Request) -> bool:
+    """Check if the request is coming from the admin subdomain."""
+    return current_tenant_slug.get() == "__superadmin__"
+
+
+def register_routes(app, registry):
+    """Register superadmin routes on the FastAPI app."""
+
+    # ── Auth guard for all admin routes ───────────────────────────────
+
+    def _check_admin(request: Request):
+        if not _require_superadmin(request):
+            return JSONResponse(
+                {"ok": False, "error": "Acesso negado."},
+                status_code=403,
+            )
+        # TODO: Validate superadmin JWT/session token from header
+        return None
+
+    # ── Setup (first-time superadmin creation) ────────────────────────
+
+    @app.get("/api/admin/setup-status")
+    async def setup_status(request: Request):
+        """Check if the initial superadmin account has been created."""
+        return _ok({"needs_setup": not tenant_repo.superadmin_exists()})
+
+    @app.post("/api/admin/setup")
+    async def setup(request: Request, body: dict):
+        """Create the initial superadmin account (one-time setup)."""
+        if tenant_repo.superadmin_exists():
+            return _err("Superadmin já configurado.")
+        username = body.get("username", "").strip()
+        password = body.get("password", "").strip()
+        if not username or not password:
+            return _err("Usuário e senha são obrigatórios.")
+        if len(password) < 6:
+            return _err("A senha deve ter pelo menos 6 caracteres.")
+
+        salt = generate_salt()
+        pwd_hash = hash_password(password, salt)
+        tenant_repo.create_superadmin(username, pwd_hash, salt)
+        token = generate_token(pwd_hash, salt)
+        logger.info("Superadmin account created: %s", username)
+        return _ok({"message": "Superadmin criado com sucesso!", "token": token})
+
+    @app.post("/api/admin/login")
+    async def admin_login(request: Request, body: dict):
+        """Authenticate as superadmin."""
+        username = body.get("username", "").strip()
+        password = body.get("password", "").strip()
+        if not username or not password:
+            return _err("Usuário e senha são obrigatórios.")
+
+        admin = tenant_repo.get_superadmin(username)
+        if not admin:
+            return _err("Credenciais inválidas.")
+
+        pwd_hash = hash_password(password, admin["salt"])
+        if pwd_hash != admin["password_hash"]:
+            return _err("Credenciais inválidas.")
+
+        token = generate_token(admin["password_hash"], admin["salt"])
+        return _ok({"token": token, "username": username})
+
+    # ── Tenants CRUD ──────────────────────────────────────────────────
+
+    @app.get("/api/admin/tenants")
+    async def list_tenants(request: Request):
+        """List all tenants with their status and runtime info."""
+        guard = _check_admin(request)
+        if guard:
+            return guard
+
+        tenants = tenant_repo.list_all()
+        # Enrich with runtime status
+        result = []
+        for t in tenants:
+            ctx = registry.get_by_slug(t["slug"])
+            t["whatsapp_connected"] = ctx.state.connected if ctx else False
+            t["msg_count"] = ctx.state.msg_count if ctx else 0
+            result.append(t)
+        return _ok(result)
+
+    @app.post("/api/admin/tenants")
+    async def create_tenant(request: Request, body: dict):
+        """Create a new tenant."""
+        guard = _check_admin(request)
+        if guard:
+            return guard
+
+        slug = body.get("slug", "").strip().lower()
+        name = body.get("name", "").strip()
+
+        if not slug or not name:
+            return _err("Slug e nome são obrigatórios.")
+
+        # Validate slug format (alphanumeric + hyphens only)
+        import re
+        if not re.match(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$", slug) or len(slug) < 3:
+            return _err("Slug inválido. Use apenas letras minúsculas, números e hífens (mín. 3 caracteres).")
+
+        from server.middleware import RESERVED_SUBDOMAINS
+        if slug in RESERVED_SUBDOMAINS:
+            return _err(f"O slug '{slug}' é reservado.")
+
+        if tenant_repo.get_by_slug(slug):
+            return _err(f"Já existe uma empresa com o slug '{slug}'.")
+
+        kwargs = {}
+        if body.get("plan"):
+            kwargs["plan"] = body["plan"]
+        if body.get("max_contacts"):
+            kwargs["max_contacts"] = int(body["max_contacts"])
+        if body.get("openrouter_api_key"):
+            kwargs["openrouter_api_key"] = body["openrouter_api_key"]
+
+        ctx = registry.create_tenant(slug, name, **kwargs)
+        tenant_data = tenant_repo.get_by_slug(slug)
+        logger.info("Tenant created via admin: %s (%s)", slug, name)
+        return _ok(tenant_data)
+
+    @app.get("/api/admin/tenants/{slug}")
+    async def get_tenant(request: Request, slug: str):
+        """Get detailed info about a specific tenant."""
+        guard = _check_admin(request)
+        if guard:
+            return guard
+
+        tenant = tenant_repo.get_by_slug(slug)
+        if not tenant:
+            return _err("Empresa não encontrada.", status=404)
+
+        ctx = registry.get_by_slug(slug)
+        tenant["whatsapp_connected"] = ctx.state.connected if ctx else False
+        tenant["msg_count"] = ctx.state.msg_count if ctx else 0
+        tenant["auto_reply_running"] = ctx.state.auto_reply_running if ctx else False
+        tenant["bot_phone"] = ctx.state.bot_phone if ctx else ""
+        return _ok(tenant)
+
+    @app.put("/api/admin/tenants/{slug}")
+    async def update_tenant(request: Request, slug: str, body: dict):
+        """Update tenant fields."""
+        guard = _check_admin(request)
+        if guard:
+            return guard
+
+        if not tenant_repo.get_by_slug(slug):
+            return _err("Empresa não encontrada.", status=404)
+
+        updated = tenant_repo.update(slug, **body)
+        logger.info("Tenant updated via admin: %s", slug)
+        return _ok(updated)
+
+    @app.post("/api/admin/tenants/{slug}/suspend")
+    async def suspend_tenant(request: Request, slug: str):
+        """Suspend a tenant (stops GOWA, blocks access)."""
+        guard = _check_admin(request)
+        if guard:
+            return guard
+
+        if not tenant_repo.get_by_slug(slug):
+            return _err("Empresa não encontrada.", status=404)
+
+        registry.suspend_tenant(slug)
+        logger.info("Tenant suspended via admin: %s", slug)
+        return _ok({"message": f"Empresa '{slug}' suspensa."})
+
+    @app.post("/api/admin/tenants/{slug}/activate")
+    async def activate_tenant(request: Request, slug: str):
+        """Re-activate a suspended tenant."""
+        guard = _check_admin(request)
+        if guard:
+            return guard
+
+        if not tenant_repo.get_by_slug(slug):
+            return _err("Empresa não encontrada.", status=404)
+
+        registry.activate_tenant(slug)
+        logger.info("Tenant activated via admin: %s", slug)
+        return _ok({"message": f"Empresa '{slug}' reativada."})
+
+    @app.delete("/api/admin/tenants/{slug}")
+    async def delete_tenant(request: Request, slug: str):
+        """Delete a tenant (removes from registry, keeps DB files)."""
+        guard = _check_admin(request)
+        if guard:
+            return guard
+
+        if not tenant_repo.get_by_slug(slug):
+            return _err("Empresa não encontrada.", status=404)
+
+        registry.remove_tenant(slug)
+        tenant_repo.delete(slug)
+        logger.info("Tenant deleted via admin: %s", slug)
+        return _ok({"message": f"Empresa '{slug}' removida."})
+
+    # ── Dashboard / Metrics ───────────────────────────────────────────
+
+    @app.get("/api/admin/dashboard")
+    async def admin_dashboard(request: Request):
+        """Global SaaS metrics for the superadmin dashboard."""
+        guard = _check_admin(request)
+        if guard:
+            return guard
+
+        total = tenant_repo.count()
+        active = tenant_repo.count_active()
+
+        # Aggregate runtime stats across all tenants
+        total_messages = 0
+        total_connected = 0
+        for ctx in registry.all():
+            total_messages += ctx.state.msg_count
+            if ctx.state.connected:
+                total_connected += 1
+
+        return _ok({
+            "total_tenants": total,
+            "active_tenants": active,
+            "connected_whatsapps": total_connected,
+            "total_messages": total_messages,
+        })
