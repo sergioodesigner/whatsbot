@@ -500,7 +500,7 @@ def register_routes(app, deps):
             text_msg_ids: list[str] = []
             media_items: list[dict] = []
             for item in items:
-                if item.get("image_path") or item.get("audio_path"):
+                if item.get("image_path") or item.get("audio_path") or item.get("video_path"):
                     media_items.append(item)
                 else:
                     text_parts.append(item.get("text", ""))
@@ -567,22 +567,46 @@ def register_routes(app, deps):
                 text = item.get("text", "")
                 image_path = item.get("image_path")
                 audio_path = item.get("audio_path")
+                video_path = item.get("video_path")
 
                 # Re-resolve media paths right before processing to mitigate
                 # race conditions where GOWA writes files after webhook delivery.
                 if image_path:
-                    image_path = await asyncio.to_thread(_sync_media_to_statics, image_path, True)
+                    image_path = await asyncio.to_thread(
+                        _resolve_media_field,
+                        {"path": image_path},
+                        "jpg",
+                        item.get("msg_id", ""),
+                        "",
+                        "",
+                    )
                 if audio_path:
-                    audio_path = await asyncio.to_thread(_sync_media_to_statics, audio_path, True)
+                    audio_path = await asyncio.to_thread(
+                        _resolve_media_field,
+                        {"path": audio_path},
+                        "ogg",
+                        item.get("msg_id", ""),
+                        "",
+                        "",
+                    )
+                if video_path:
+                    video_path = await asyncio.to_thread(
+                        _resolve_media_field,
+                        {"path": video_path},
+                        "mp4",
+                        item.get("msg_id", ""),
+                        "",
+                        "",
+                    )
 
-                media_label = "image" if image_path else "audio"
+                media_label = "image" if image_path else ("audio" if audio_path else "video")
                 logger.info("[Batch] Processing %s from %s", media_label, phone)
 
                 # Save message to contact memory
                 contact.add_message(
-                    "user", text or ("[Áudio recebido]" if audio_path else ""),
-                    media_type="image" if image_path else "audio",
-                    media_path=image_path or audio_path,
+                    "user", text or ("[Áudio recebido]" if audio_path else ("[Vídeo recebido]" if video_path else "")),
+                    media_type="image" if image_path else ("audio" if audio_path else "video"),
+                    media_path=image_path or audio_path or video_path,
                     msg_id=item.get("msg_id"),
                 )
 
@@ -646,6 +670,8 @@ def register_routes(app, deps):
                 elif image_path and transcription:
                     prefix = f"[Descrição da imagem]: {transcription}"
                     llm_text = f"{prefix}\n{text}" if text else prefix
+                elif video_path:
+                    llm_text = llm_text or "[Vídeo recebido]"
 
                 try:
                     await asyncio.to_thread(gowa_client.send_chat_presence, phone)
@@ -818,6 +844,7 @@ def register_routes(app, deps):
         image_path: str | None = None
         audio_path: str | None = None
         gif_path: str | None = None
+        video_path: str | None = None
 
         raw_image = data.get("image")
         original_filename = str(data.get("original_filename", "")).strip()
@@ -864,6 +891,8 @@ def register_routes(app, deps):
                 )
                 if candidate and candidate.lower().endswith(".gif"):
                     gif_path = candidate
+                elif candidate:
+                    video_path = candidate
             elif isinstance(raw_video, dict):
                 candidate = _resolve_media_field(
                     raw_video, "mp4", message_id=msg_id,
@@ -879,12 +908,15 @@ def register_routes(app, deps):
                 )
                 if is_gif:
                     gif_path = candidate
+                elif candidate:
+                    video_path = candidate
                 if not text:
                     text = (raw_video.get("caption", "") or "").strip()
 
         # Reuse image pipeline for GIF rendering in the current frontend.
         if gif_path and not image_path:
             image_path = gif_path
+            video_path = None
 
         # Video notes (voice messages) are treated as audio
         raw_vn = data.get("video_note")
@@ -936,10 +968,10 @@ def register_routes(app, deps):
             individual_phone = phone
             from_name = data.get("from_name", "") or data.get("pushName", "") or data.get("notify", "")
 
-        if not phone or (not text and not image_path and not audio_path):
+        if not phone or (not text and not image_path and not audio_path and not video_path):
             logger.info("[Webhook] Skipping: text=%r phone=%r media=%s",
                         text[:50] if text else "", phone,
-                        "image" if image_path else ("audio" if audio_path else "none"))
+                        "image" if image_path else ("audio" if audio_path else ("video" if video_path else "none")))
             return _ok({"status": "ignored"})
 
         state.processed_messages.add(msg_id)
@@ -963,6 +995,9 @@ def register_routes(app, deps):
             elif audio_path:
                 media_type = "audio"
                 media_path = audio_path
+            elif video_path:
+                media_type = "video"
+                media_path = video_path
 
             logger.info("[Webhook] Syncing outgoing %s to %s: %s",
                         media_type or "message", phone,
@@ -997,6 +1032,9 @@ def register_routes(app, deps):
         elif audio_path:
             media_type = "audio"
             media_path = audio_path
+        elif video_path:
+            media_type = "video"
+            media_path = video_path
 
         # For groups: prefix text with sender name and check @mention
         display_text = text
@@ -1119,6 +1157,7 @@ def register_routes(app, deps):
             "text": display_text,
             "image_path": image_path,
             "audio_path": audio_path,
+            "video_path": video_path,
             "msg_id": msg_id,
         })
 

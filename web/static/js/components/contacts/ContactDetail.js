@@ -531,6 +531,17 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
                       ${msgText && msgText !== '[Áudio recebido]' && msgText !== '[Áudio]' && !msgText.startsWith('[Transcrição do áudio]')
                         ? html`<span class="block text-[12px] text-wa-secondary italic" dangerouslySetInnerHTML=${{ __html: formatWhatsApp(msgText) }}></span>`
                         : null}
+                    ` : m.media_type === 'video' ? html`
+                      <video
+                        src="${normalizeMediaSrc(m.media_path, m._isLocalBlob)}"
+                        class="rounded-[4px] max-w-full max-h-[320px] mb-1 bg-black"
+                        style="min-width:140px"
+                        controls
+                        preload="metadata"
+                      ></video>
+                      ${msgText && msgText !== '[Vídeo recebido]'
+                        ? html`<span class="block text-[12px]" dangerouslySetInnerHTML=${{ __html: formatWhatsApp(msgText) }}></span>`
+                        : null}
                     ` : html`
                       <span dangerouslySetInnerHTML=${{ __html: formatWhatsApp(msgText) }}></span>
                       ${(() => {

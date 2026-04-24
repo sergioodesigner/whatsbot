@@ -275,6 +275,8 @@ def list_contacts(q: str = "", archived: bool = False) -> list[dict]:
                 last_content = (row["last_msg_content"] or "")[:80] or "\U0001f4f7 Imagem"
             elif lmt == "audio":
                 last_content = "\U0001f3a4 Áudio"
+            elif lmt == "video":
+                last_content = "\U0001f3ac Vídeo"
             else:
                 last_content = (row["last_msg_content"] or "")[:80]
 
