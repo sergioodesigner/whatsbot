@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS crm_deals (
     contact_phone   TEXT    NOT NULL,
     title           TEXT    NOT NULL DEFAULT '',
     stage           TEXT    NOT NULL DEFAULT 'novo',
+    origin          TEXT    NOT NULL DEFAULT 'manual',
     potential_value REAL    NOT NULL DEFAULT 0.0,
     owner           TEXT    NOT NULL DEFAULT '',
     notes           TEXT    NOT NULL DEFAULT '',

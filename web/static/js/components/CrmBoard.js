@@ -19,6 +19,14 @@ function dateBr(ts) {
   return d.toLocaleDateString('pt-BR');
 }
 
+function originLabel(origin) {
+  const raw = String(origin || 'manual');
+  if (raw === 'whatsapp_auto') return 'WhatsApp (automático)';
+  if (raw.startsWith('manual:')) return `Manual (${raw.slice(7) || 'outra origem'})`;
+  if (raw === 'manual') return 'Manual';
+  return raw;
+}
+
 export function CrmBoard() {
   const [stages, setStages] = useState([]);
   const [dealsByStage, setDealsByStage] = useState({});
@@ -28,6 +36,7 @@ export function CrmBoard() {
   const [title, setTitle] = useState('');
   const [owner, setOwner] = useState('');
   const [value, setValue] = useState('');
+  const [origin, setOrigin] = useState('');
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [taskTitle, setTaskTitle] = useState('');
@@ -65,6 +74,7 @@ export function CrmBoard() {
       owner: owner.trim(),
       potential_value: parseFloat(value || '0') || 0,
       stage: 'novo',
+      origin: origin.trim() ? `manual:${origin.trim().toLowerCase()}` : 'manual',
     };
     const res = await upsertCrmDeal(payload);
     if (!res.ok) return setError(res.error || 'Erro ao criar oportunidade.');
@@ -72,6 +82,7 @@ export function CrmBoard() {
     setTitle('');
     setOwner('');
     setValue('');
+    setOrigin('');
     await loadBoard();
   }
 
@@ -112,11 +123,12 @@ export function CrmBoard() {
 
   return html`
     <div class="space-y-4">
-      <form onSubmit=${handleCreateDeal} class="bg-white rounded-xl p-4 border border-wa-border grid grid-cols-1 md:grid-cols-5 gap-2">
+      <form onSubmit=${handleCreateDeal} class="bg-white rounded-xl p-4 border border-wa-border grid grid-cols-1 md:grid-cols-6 gap-2">
         <input value=${phone} onInput=${(e) => setPhone(e.target.value)} class="border rounded px-3 py-2" placeholder="Telefone (com DDD)" />
         <input value=${title} onInput=${(e) => setTitle(e.target.value)} class="border rounded px-3 py-2" placeholder="Título da oportunidade" />
         <input value=${owner} onInput=${(e) => setOwner(e.target.value)} class="border rounded px-3 py-2" placeholder="Responsável" />
         <input value=${value} onInput=${(e) => setValue(e.target.value)} type="number" step="0.01" class="border rounded px-3 py-2" placeholder="Valor potencial" />
+        <input value=${origin} onInput=${(e) => setOrigin(e.target.value)} class="border rounded px-3 py-2" placeholder="Origem manual (ex.: instagram)" />
         <button class="bg-wa-teal text-white rounded px-3 py-2">Adicionar no funil</button>
       </form>
 
@@ -132,6 +144,9 @@ export function CrmBoard() {
                   <div class="text-sm font-medium">${deal.title || deal.contact?.name || deal.contact_phone}</div>
                   <div class="text-xs text-wa-secondary">${deal.contact?.phone || deal.contact_phone}</div>
                   <div class="text-xs text-wa-secondary">R$ ${Number(deal.potential_value || 0).toFixed(2)}</div>
+                  <div class="text-xs mt-1">
+                    <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700">${originLabel(deal.origin)}</span>
+                  </div>
                   <div class="mt-2">
                     <select class="text-xs border rounded px-2 py-1" value=${deal.stage} onChange=${(e) => moveDeal(deal, e.target.value)}>
                       ${stages.map((s) => html`<option value=${s}>${STAGE_LABELS[s] || s}</option>`)}
@@ -152,6 +167,9 @@ export function CrmBoard() {
           </div>
           <div class="text-sm text-wa-secondary">
             Contato: ${selectedDeal.contact?.name || '-'} (${selectedDeal.contact?.phone || selectedDeal.contact_phone})
+          </div>
+          <div class="text-sm text-wa-secondary">
+            Origem: ${originLabel(selectedDeal.origin)}
           </div>
           <div class="text-sm text-wa-secondary">
             Observações do contato: ${(selectedDeal.contact?.observations || []).slice(0, 2).join(' | ') || 'Sem observações'}

@@ -14,9 +14,10 @@ from pathlib import Path
 import httpx
 from gowa.client import GOWASendError, extract_msg_id
 
-from db.repositories import contact_repo, message_repo
+from db.repositories import contact_repo, message_repo, crm_repo, master_policy_repo
 from server.execution import astart_execution, aend_execution, atrack_step, prune_executions
 from server.helpers import _ok
+from server.tenant import current_tenant_slug
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,15 @@ def register_routes(app, deps):
     ws_manager = deps.ws_manager
     state = deps.state
     settings = deps.settings
+
+    def _crm_enabled() -> bool:
+        slug = current_tenant_slug.get()
+        if not slug or slug in ("default", "__superadmin__"):
+            return True
+        try:
+            return bool(master_policy_repo.get_tenant(slug, "crm_enabled", True))
+        except RuntimeError:
+            return True
 
     def _sync_media_to_statics(media_path: str | None, wait_for_file: bool = False) -> str | None:
         """Ensure incoming media files are accessible under /statics.
@@ -1193,6 +1203,19 @@ def register_routes(app, deps):
 
         # Increment unread count for incoming user messages
         await asyncio.to_thread(lambda: agent_handler._get_contact(phone).increment_unread(msg_id))
+
+        # CRM auto-entry flow (Bolten-like):
+        # incoming private message -> contact -> deal in funnel.
+        if (not is_group) and (not is_channel) and _crm_enabled():
+            try:
+                suggested_title = (from_name or "").strip() or (text[:80] if text else "")
+                await asyncio.to_thread(
+                    crm_repo.touch_or_create_from_contact,
+                    phone,
+                    suggested_title=suggested_title,
+                )
+            except Exception as exc:
+                logger.warning("[Webhook] CRM auto-entry ignored for %s: %s", phone, exc)
 
         # Broadcast incoming message to frontend in real-time
         broadcast_msg: dict = {"role": "user", "content": display_text, "ts": time.time(), "msg_id": msg_id}
