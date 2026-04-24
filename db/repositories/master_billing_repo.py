@@ -78,6 +78,8 @@ def upsert_profile(tenant_slug: str, data: dict) -> dict:
         ),
     )
     conn.commit()
+    if payload["contract_start_ts"]:
+        ensure_next_three_open_invoices(tenant_slug)
     return get_profile(tenant_slug)
 
 
@@ -154,9 +156,13 @@ def upsert_invoice(tenant_slug: str, data: dict) -> dict:
 def ensure_next_three_open_invoices(tenant_slug: str) -> None:
     """Keep at least 3 future/open invoices (rolling window)."""
     profile = get_profile(tenant_slug)
+    if not profile.get("contract_start_ts"):
+        return
     due_day = int(profile.get("due_day") or 10)
     default_amount = float(profile.get("plan_amount") or 0.0)
+    start_period = _period_from_ts(float(profile.get("contract_start_ts") or time.time()))
     now_period = _period_from_ts(time.time())
+    first_period = max(start_period, now_period)
 
     invoices = list_invoices(tenant_slug)
     open_periods = sorted(
@@ -166,7 +172,7 @@ def ensure_next_three_open_invoices(tenant_slug: str) -> None:
     if open_periods:
         next_period = _next_period(open_periods[-1])
     else:
-        next_period = now_period
+        next_period = first_period
 
     while len(open_periods) < 3:
         upsert_invoice(
