@@ -8,7 +8,13 @@ import { formatWhatsApp } from '../../utils/formatWhatsApp.js';
 import { AudioPlayer } from './AudioPlayer.js';
 
 const html = htm.bind(h);
-const EMOJI_OPTIONS = ['😀', '😂', '😍', '🤔', '🙏', '👍', '👏', '🔥', '❤️', '🎉', '✅', '😅'];
+const EMOJI_OPTIONS = [
+  '😀', '😁', '😂', '🤣', '😅', '😊', '😉', '😍', '😘', '😎', '🤩', '🥳',
+  '🤔', '😴', '😢', '😭', '😡', '🤯', '😇', '🤗', '🙌', '🙏', '👏', '👍',
+  '👎', '👌', '🤝', '👀', '💪', '🎉', '🔥', '✨', '💯', '✅', '❌', '⚠️',
+  '❤️', '💙', '💚', '💛', '🧡', '💜', '🖤', '🤍', '🤎', '💔', '💖', '💡',
+  '📌', '📣', '📎', '📷', '🎵', '🎯', '🚀', '💰', '📈', '📝', '⌛', '⏰'
+];
 
 function normalizeMediaSrc(src, isLocalBlob) {
   if (!src) return '';
@@ -536,7 +542,9 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
                           <a href=${p.url || url} target="_blank" rel="noopener noreferrer"
                              class="block mt-[6px] rounded-[8px] border border-wa-border overflow-hidden no-underline bg-white/70">
                             ${p.image ? html`
-                              <img src=${p.image} alt="preview" class="w-full max-h-[160px] object-cover" loading="lazy" />
+                              <div class="w-full aspect-square bg-wa-hover flex items-center justify-center">
+                                <img src=${p.image} alt="preview" class="w-full h-full object-contain" loading="lazy" />
+                              </div>
                             ` : null}
                             <div class="p-[8px]">
                               <div class="text-[11px] text-wa-secondary">${p.site_name || ''}</div>

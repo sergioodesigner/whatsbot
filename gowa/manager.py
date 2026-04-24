@@ -58,6 +58,9 @@ class GOWAManager:
         ]
         if self.webhook_url:
             cmd.extend(["--webhook", self.webhook_url])
+        # Force local media download to ensure payload paths are readable
+        # under /statics/media (helps with incoming image/audio rendering).
+        cmd.extend(["--auto-download-media", "true"])
         # Enable chat_presence webhook events (typing/recording indicators)
         cmd.extend(["--webhook-events", "message,chat_presence,message.ack"])
         # Must be "available" to receive typing events from contacts

@@ -175,17 +175,29 @@ def register_routes(app, deps):
             logger.warning("[Webhook] Failed to download media URL %s: %s", media_url, e)
             return None
 
+    def _media_exists(rel_path: str | None) -> bool:
+        if not rel_path:
+            return False
+        clean = _normalize_media_path(rel_path)
+        if not clean:
+            return False
+        return (Path(settings.data_dir) / clean).is_file()
+
     def _resolve_media_field(raw_media, fallback_ext: str) -> str | None:
         """Resolve media field from webhook payload (path or URL)."""
         if not raw_media:
             return None
         if isinstance(raw_media, str):
+            if str(raw_media).startswith(("http://", "https://")):
+                downloaded = _download_media_from_url(str(raw_media), fallback_ext=fallback_ext)
+                if downloaded:
+                    return downloaded
             return _sync_media_to_statics(raw_media)
         if isinstance(raw_media, dict):
             path_value = raw_media.get("path", "")
             if path_value:
                 resolved = _sync_media_to_statics(path_value)
-                if resolved:
+                if resolved and _media_exists(resolved):
                     return resolved
             url_value = raw_media.get("url", "") or raw_media.get("link", "") or raw_media.get("download_url", "")
             if url_value:
