@@ -1,7 +1,7 @@
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
-import { testApiKey, checkForUpdates, performUpdate } from '../services/api.js';
+import { testApiKey } from '../services/api.js';
 import { ModelSelect } from './ModelSelect.js';
 
 const html = htm.bind(h);
@@ -34,8 +34,10 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
   const [imageTranscriptionEnabled, setImageTranscriptionEnabled] = useState(true);
   const [transferAlertEnabled, setTransferAlertEnabled] = useState(true);
   const [transferAlertDuration, setTransferAlertDuration] = useState(5);
-  const [maxExecutions, setMaxExecutions] = useState(200);
   const [defaultAiEnabled, setDefaultAiEnabled] = useState(true);
+  const [apiModelsEnabled, setApiModelsEnabled] = useState(true);
+  const [apiModelsGloballyEnabled, setApiModelsGloballyEnabled] = useState(true);
+  const [apiModelsEffectiveEnabled, setApiModelsEffectiveEnabled] = useState(true);
   const [testing, setTesting] = useState(false);
   const [webPassword, setWebPassword] = useState('');
   const [webPasswordConfirm, setWebPasswordConfirm] = useState('');
@@ -43,29 +45,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
 
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [promptFullscreen, setPromptFullscreen] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const [currentVersion, setCurrentVersion] = useState('');
-  const [latestVersion, setLatestVersion] = useState('');
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
-
-  // Check for updates on mount
-  useEffect(() => {
-    fetchVersionInfo();
-  }, []);
-
-  async function fetchVersionInfo() {
-    setCheckingUpdate(true);
-    try {
-      const res = await checkForUpdates();
-      if (res.ok) {
-        setCurrentVersion(res.data.current_version || '');
-        setLatestVersion(res.data.latest_version || '');
-        setUpdateAvailable(res.data.update_available || false);
-      }
-    } catch (e) {}
-    setCheckingUpdate(false);
-  }
 
   // Populate form when config loads
   useEffect(() => {
@@ -84,8 +63,10 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
       setImageTranscriptionEnabled(config.image_transcription_enabled ?? true);
       setTransferAlertEnabled(config.transfer_alert_enabled ?? true);
       setTransferAlertDuration(config.transfer_alert_duration ?? 5);
-      setMaxExecutions(config.max_executions ?? 200);
       setDefaultAiEnabled(config.default_ai_enabled ?? true);
+      setApiModelsEnabled(config.api_models_enabled ?? true);
+      setApiModelsGloballyEnabled(config.api_models_globally_enabled ?? true);
+      setApiModelsEffectiveEnabled(config.api_models_effective_enabled ?? true);
     }
   }, [config]);
 
@@ -119,24 +100,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
     setTesting(false);
   }
 
-  const handleUpdate = async () => {
-    if (!confirm('Deseja atualizar o WhatsBot para a versão mais recente?\nO servidor precisará ser reiniciado após a atualização.')) return;
-    setUpdating(true);
-    try {
-      const res = await performUpdate();
-      if (res.ok) {
-        onNotify(res.data?.message || 'Atualização concluída! Reinicie o servidor.');
-        await fetchVersionInfo();
-      } else {
-        onNotify(res.error || 'Erro ao atualizar.');
-      }
-    } catch (e) {
-      onNotify('Erro de conexão ao atualizar.');
-    } finally {
-      setUpdating(false);
-    }
-  };
-
   async function handleSave() {
     const data = {
       model: model.trim() || 'openai/gpt-4o-mini',
@@ -152,8 +115,8 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
       image_transcription_enabled: imageTranscriptionEnabled,
       transfer_alert_enabled: transferAlertEnabled,
       transfer_alert_duration: parseInt(transferAlertDuration, 10) || 5,
-      max_executions: parseInt(maxExecutions, 10) || 200,
       default_ai_enabled: defaultAiEnabled,
+      api_models_enabled: apiModelsEnabled,
     };
     // Only include api_key if user typed a new one
     if (apiKey.trim()) {
@@ -212,6 +175,22 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
 
       <!-- Section: API e Modelos -->
       <${Section} title="API e Modelos">
+        <div class="p-3 bg-wa-panel rounded-lg border border-wa-border">
+          <label class="flex items-center gap-2 text-sm font-semibold text-wa-text cursor-pointer">
+            <input
+              type="checkbox"
+              checked=${apiModelsEnabled}
+              disabled=${!apiModelsGloballyEnabled}
+              onChange=${(e) => setApiModelsEnabled(e.target.checked)}
+              class="w-4 h-4 rounded border-wa-border accent-wa-teal disabled:opacity-50"
+            />
+            Permitir edição de API e modelos nesta empresa
+          </label>
+          ${!apiModelsGloballyEnabled ? html`
+            <span class="text-xs text-red-600">Bloqueado globalmente pelo Superadmin</span>
+          ` : null}
+        </div>
+
         <!-- API Key -->
         <div>
           <label class="block text-sm font-semibold text-wa-text mb-1">API Key OpenRouter</label>
@@ -219,13 +198,14 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
             <input
               type="password"
               value=${apiKey}
+              disabled=${!apiModelsEffectiveEnabled}
               onInput=${(e) => setApiKey(e.target.value)}
               placeholder=${config.openrouter_api_key || 'sk-or-...'}
               class="flex-1 bg-wa-panel text-wa-text px-3 py-2 rounded-lg text-sm border border-wa-border focus:border-wa-teal focus:outline-none"
             />
             <button
               onClick=${handleTestKey}
-              disabled=${testing}
+              disabled=${testing || !apiModelsEffectiveEnabled}
               class="px-4 py-2 bg-wa-panel hover:bg-wa-hover disabled:opacity-50 text-wa-text text-sm rounded-lg transition-colors whitespace-nowrap border border-wa-border"
             >
               ${testing ? '...' : 'Testar'}
@@ -245,6 +225,7 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
           <label class="block text-sm font-semibold text-wa-text mb-1">Modelo de IA (chat)</label>
           <${ModelSelect}
             value=${model}
+            disabled=${!apiModelsEffectiveEnabled}
             onChange=${setModel}
             placeholder="openai/gpt-4o-mini"
           />
@@ -256,6 +237,7 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
             <label class="block text-sm font-semibold text-wa-text mb-1">Modelo transcrição áudio</label>
             <${ModelSelect}
               value=${audioModel}
+              disabled=${!apiModelsEffectiveEnabled}
               onChange=${setAudioModel}
               filterModality="audio"
               placeholder="google/gemini-2.0-flash-001"
@@ -275,6 +257,7 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
             <label class="block text-sm font-semibold text-wa-text mb-1">Modelo descrição imagem</label>
             <${ModelSelect}
               value=${imageModel}
+              disabled=${!apiModelsEffectiveEnabled}
               onChange=${setImageModel}
               filterModality="image"
               placeholder="google/gemini-2.0-flash-001"
@@ -431,21 +414,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
 
       <!-- Section: Avancado -->
       <${Section} title="Avançado">
-        <!-- Max Executions -->
-        <div>
-          <label class="block text-sm font-semibold text-wa-text mb-1">Execuções salvas</label>
-          <input
-            type="number"
-            min="10"
-            max="10000"
-            step="10"
-            value=${maxExecutions}
-            onInput=${(e) => setMaxExecutions(e.target.value)}
-            class="w-full bg-wa-panel text-wa-text px-3 py-2 rounded-lg text-sm border border-wa-border focus:border-wa-teal focus:outline-none"
-          />
-          <span class="text-xs text-wa-secondary">Quantidade máxima de execuções e payloads mantidos no banco</span>
-        </div>
-
         <!-- Panel Password -->
         <div class="flex flex-col gap-2 p-3 bg-wa-panel rounded-lg border border-wa-border">
           <div class="flex items-center justify-between">
@@ -491,49 +459,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
           ` : null}
         </div>
 
-        <!-- Update -->
-        <div class="p-3 bg-wa-panel rounded-lg border border-wa-border">
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="text-sm font-semibold text-wa-text">Atualizar WhatsBot</label>
-              <div class="flex items-center gap-3 mt-1.5">
-                <span class="text-xs text-wa-secondary">
-                  Atual: <span class="font-mono font-semibold text-wa-text">${currentVersion || '...'}</span>
-                </span>
-                ${latestVersion ? html`
-                  <span class="text-xs text-wa-secondary">
-                    Última: <span class="font-mono font-semibold ${updateAvailable ? 'text-blue-600' : 'text-green-600'}">${latestVersion}</span>
-                  </span>
-                ` : null}
-                ${!checkingUpdate && !updateAvailable && latestVersion ? html`
-                  <span class="text-xs text-green-600 font-medium">Atualizado</span>
-                ` : null}
-                ${updateAvailable ? html`
-                  <span class="text-xs text-blue-600 font-medium">Nova versão disponível</span>
-                ` : null}
-              </div>
-            </div>
-            <div class="flex items-center gap-2 ml-4">
-              <button
-                onClick=${fetchVersionInfo}
-                disabled=${checkingUpdate || updating}
-                class="px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-wa-text text-sm rounded-lg transition-colors"
-                title="Verificar atualizações"
-              >
-                ${checkingUpdate ? '...' : 'Verificar'}
-              </button>
-              ${updateAvailable ? html`
-                <button
-                  onClick=${handleUpdate}
-                  disabled=${updating}
-                  class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
-                >
-                  ${updating ? 'Atualizando...' : 'Atualizar'}
-                </button>
-              ` : null}
-            </div>
-          </div>
-        </div>
       <//>
 
       <!-- Save Button (sticky) -->

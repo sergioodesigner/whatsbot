@@ -57,6 +57,19 @@
         <p>Carregando lista...</p>
       </div>
     </section>
+
+    <section id="ai-policy-section" class="bg-white rounded-xl shadow p-5 space-y-4 hidden">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Política global: API e modelos</h2>
+        <button id="refresh-ai-policy" class="border px-3 py-1 rounded">Atualizar</button>
+      </div>
+      <label class="inline-flex items-center gap-2 text-sm">
+        <input id="ai-policy-global-enabled" type="checkbox" class="w-4 h-4" />
+        Habilitar API e modelos globalmente
+      </label>
+      <p class="text-xs text-slate-500">Quando desativado aqui, o painel da empresa não pode reativar.</p>
+      <div id="ai-policy-tenants" class="overflow-x-auto text-sm text-slate-700"></div>
+    </section>
   </main>
   <div id="tenant-modal" class="fixed inset-0 bg-black/60 z-50 hidden">
     <div class="w-full h-full p-4 md:p-6">
@@ -77,6 +90,9 @@
     const loginSection = document.getElementById("login-section");
     const tenantCreateSection = document.getElementById("tenant-create-section");
     const tenantsSection = document.getElementById("tenants-section");
+    const aiPolicySection = document.getElementById("ai-policy-section");
+    const aiPolicyGlobalEnabled = document.getElementById("ai-policy-global-enabled");
+    const aiPolicyTenants = document.getElementById("ai-policy-tenants");
     const tenantModal = document.getElementById("tenant-modal");
     const tenantModalTitle = document.getElementById("tenant-modal-title");
     const tenantModalFrame = document.getElementById("tenant-modal-frame");
@@ -154,6 +170,7 @@
           loginSection.classList.add("hidden");
           tenantCreateSection.classList.add("hidden");
           tenantsSection.classList.add("hidden");
+          aiPolicySection.classList.add("hidden");
           setStatus("Setup inicial pendente. Crie o primeiro superadmin.");
         } else {
           setupSection.classList.add("hidden");
@@ -164,17 +181,21 @@
               loginSection.classList.add("hidden");
               tenantCreateSection.classList.remove("hidden");
               tenantsSection.classList.remove("hidden");
+              aiPolicySection.classList.remove("hidden");
               setStatus("Sessao de superadmin restaurada.");
+              await loadAiPolicy();
             } catch (_) {
               adminToken = "";
               localStorage.removeItem("whatsbot_admin_token");
               tenantCreateSection.classList.add("hidden");
               tenantsSection.classList.add("hidden");
+              aiPolicySection.classList.add("hidden");
               setStatus("Superadmin ja configurado. Faca login.");
             }
           } else {
             tenantCreateSection.classList.add("hidden");
             tenantsSection.classList.add("hidden");
+            aiPolicySection.classList.add("hidden");
             setStatus("Superadmin ja configurado. Faca login.");
           }
         }
@@ -235,6 +256,41 @@
       }
     }
 
+    async function loadAiPolicy() {
+      const data = await api("/api/admin/ai-policy");
+      aiPolicyGlobalEnabled.checked = !!data.global_enabled;
+      if (!data.tenants || !data.tenants.length) {
+        aiPolicyTenants.innerHTML = "<p>Nenhuma empresa para configurar.</p>";
+        return;
+      }
+      const rows = data.tenants.map((t) => `
+        <tr class="border-b">
+          <td class="py-2 pr-4 font-medium">${t.name}</td>
+          <td class="py-2 pr-4">${t.slug}</td>
+          <td class="py-2 pr-4">
+            <label class="inline-flex items-center gap-2">
+              <input type="checkbox" data-ai-tenant="${t.slug}" ${t.enabled ? "checked" : ""} ${data.global_enabled ? "" : "disabled"} />
+              <span>${t.enabled ? "Ativo" : "Inativo"}</span>
+            </label>
+          </td>
+          <td class="py-2 pr-4">${t.effective_enabled ? "Ativo" : "Bloqueado"}</td>
+        </tr>
+      `).join("");
+      aiPolicyTenants.innerHTML = `
+        <table class="w-full text-left">
+          <thead>
+            <tr class="border-b">
+              <th class="py-2 pr-4">Nome</th>
+              <th class="py-2 pr-4">Slug</th>
+              <th class="py-2 pr-4">Empresa pode editar</th>
+              <th class="py-2 pr-4">Status efetivo</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
     document.getElementById("setup-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const username = document.getElementById("setup-username").value.trim();
@@ -252,8 +308,10 @@
         loginSection.classList.add("hidden");
         tenantCreateSection.classList.remove("hidden");
         tenantsSection.classList.remove("hidden");
+        aiPolicySection.classList.remove("hidden");
         setStatus("Superadmin criado com sucesso. Sessao iniciada.");
         await loadTenants();
+        await loadAiPolicy();
       } catch (err) {
         setStatus(`Erro no setup: ${err.message}`, true);
       }
@@ -275,8 +333,10 @@
         loginSection.classList.add("hidden");
         tenantCreateSection.classList.remove("hidden");
         tenantsSection.classList.remove("hidden");
+        aiPolicySection.classList.remove("hidden");
         setStatus(`Login OK. Usuario: ${data.username}`);
         await loadTenants();
+        await loadAiPolicy();
       } catch (err) {
         setStatus(`Erro no login: ${err.message}`, true);
       }
@@ -300,6 +360,32 @@
     });
 
     document.getElementById("refresh-tenants").addEventListener("click", loadTenants);
+    document.getElementById("refresh-ai-policy").addEventListener("click", loadAiPolicy);
+    aiPolicyGlobalEnabled.addEventListener("change", async (e) => {
+      try {
+        await api("/api/admin/ai-policy/global", {
+          method: "PUT",
+          body: JSON.stringify({ enabled: e.target.checked }),
+        });
+        await loadAiPolicy();
+      } catch (err) {
+        setStatus(`Erro ao atualizar política global: ${err.message}`, true);
+      }
+    });
+    aiPolicyTenants.addEventListener("change", async (e) => {
+      const input = e.target.closest("input[data-ai-tenant]");
+      if (!input) return;
+      const slug = input.getAttribute("data-ai-tenant");
+      try {
+        await api(`/api/admin/ai-policy/tenant/${encodeURIComponent(slug)}`, {
+          method: "PUT",
+          body: JSON.stringify({ enabled: input.checked }),
+        });
+        await loadAiPolicy();
+      } catch (err) {
+        setStatus(`Erro ao atualizar empresa ${slug}: ${err.message}`, true);
+      }
+    });
     tenantModalClose.addEventListener("click", closeModal);
     tenantModal.addEventListener("click", (e) => {
       if (e.target === tenantModal) closeModal();

@@ -7,6 +7,8 @@ from typing import Any
 
 import httpx
 
+from db.repositories import master_policy_repo
+from server.tenant import current_tenant_slug
 from server.auth import generate_salt, hash_password
 from server.helpers import _ok, _err, _mask_key
 
@@ -28,8 +30,24 @@ def register_routes(app, deps):
     ws_manager = deps.ws_manager
     state = deps.state
 
+    def _api_models_policy() -> tuple[bool, bool, bool]:
+        """Return (global_enabled, tenant_enabled, effective_enabled)."""
+        slug = current_tenant_slug.get()
+        global_enabled = True
+        tenant_enabled = True
+        try:
+            global_enabled = bool(master_policy_repo.get_global("api_models_enabled", True))
+            if slug and slug not in ("default", "__superadmin__"):
+                tenant_enabled = bool(master_policy_repo.get_tenant(slug, "api_models_enabled", True))
+        except RuntimeError:
+            # Single-tenant mode (no master DB)
+            global_enabled = True
+            tenant_enabled = True
+        return global_enabled, tenant_enabled, global_enabled and tenant_enabled
+
     @app.get("/api/config")
     async def get_config():
+        global_enabled, tenant_enabled, effective_enabled = _api_models_policy()
         return _ok({
             "openrouter_api_key": _mask_key(settings.get("openrouter_api_key", "")),
             "model": settings.get("model", "openai/gpt-4o-mini"),
@@ -48,10 +66,30 @@ def register_routes(app, deps):
             "max_executions": settings.get("max_executions", 200),
             "default_ai_enabled": settings.get("default_ai_enabled", True),
             "has_password": bool(settings.get("web_password_hash", "")),
+            "api_models_globally_enabled": global_enabled,
+            "api_models_enabled": tenant_enabled,
+            "api_models_effective_enabled": effective_enabled,
         })
 
     @app.put("/api/config")
     async def save_config(body: dict):
+        global_enabled, tenant_enabled, effective_enabled = _api_models_policy()
+        slug = current_tenant_slug.get()
+
+        if "api_models_enabled" in body and slug and slug not in ("default", "__superadmin__"):
+            desired = bool(body.get("api_models_enabled"))
+            if desired and not global_enabled:
+                return _err("API e modelos estão desativados globalmente pelo Superadmin.", status=403)
+            try:
+                master_policy_repo.set_tenant(slug, "api_models_enabled", desired)
+                tenant_enabled = desired
+                effective_enabled = global_enabled and tenant_enabled
+            except RuntimeError:
+                pass
+
+        if not effective_enabled and any(k in body for k in ("openrouter_api_key", "model", "audio_model", "image_model")):
+            return _err("API e modelos estão bloqueados pelo Superadmin para esta empresa.", status=403)
+
         allowed_keys = {
             "openrouter_api_key", "model", "audio_model", "image_model",
             "audio_transcription_enabled", "image_transcription_enabled",
@@ -60,7 +98,7 @@ def register_routes(app, deps):
             "split_messages", "split_message_delay",
             "transfer_alert_enabled", "transfer_alert_duration",
             "group_reply_mode", "bot_phone", "bot_name",
-            "max_executions", "default_ai_enabled",
+            "default_ai_enabled",
         }
         for key, value in body.items():
             if key in allowed_keys:
@@ -98,6 +136,9 @@ def register_routes(app, deps):
 
     @app.post("/api/config/test-key")
     async def test_api_key(body: dict):
+        _, _, effective_enabled = _api_models_policy()
+        if not effective_enabled:
+            return _err("API e modelos estão bloqueados pelo Superadmin para esta empresa.", status=403)
         api_key = body.get("api_key", "").strip()
         if not api_key:
             return _err("Insira uma API key primeiro.")

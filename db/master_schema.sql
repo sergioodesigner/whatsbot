@@ -25,3 +25,15 @@ CREATE TABLE IF NOT EXISTS superadmins (
     salt            TEXT    NOT NULL,
     created_at      REAL    NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS global_config (
+    key             TEXT PRIMARY KEY,
+    value           TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenant_policies (
+    tenant_slug     TEXT NOT NULL,
+    key             TEXT NOT NULL,
+    value           TEXT NOT NULL,
+    PRIMARY KEY (tenant_slug, key)
+);

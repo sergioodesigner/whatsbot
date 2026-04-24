@@ -40,7 +40,7 @@ async function fetchModelsOnce() {
  * @param {string} [props.filterModality] - Filter by input modality ("audio", "image", or null for all)
  * @param {string} [props.placeholder] - Placeholder text
  */
-export function ModelSelect({ value, onChange, filterModality, placeholder }) {
+export function ModelSelect({ value, onChange, filterModality, placeholder, disabled = false }) {
   const [models, setModels] = useState([]);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -83,6 +83,7 @@ export function ModelSelect({ value, onChange, filterModality, placeholder }) {
   useEffect(() => { setHighlightIdx(0); }, [query]);
 
   function handleSelect(id) {
+    if (disabled) return;
     onChange(id);
     setQuery('');
     setOpen(false);
@@ -130,13 +131,14 @@ export function ModelSelect({ value, onChange, filterModality, placeholder }) {
         type="text"
         value=${displayValue}
         placeholder=${placeholder || 'Selecione um modelo...'}
+        disabled=${disabled}
         onFocus=${() => { setOpen(true); setQuery(''); }}
         onInput=${(e) => { setQuery(e.target.value); setOpen(true); }}
         onKeyDown=${handleKeyDown}
         class="w-full bg-wa-panel text-wa-text px-3 py-2 rounded-lg text-sm border border-wa-border focus:border-wa-teal focus:outline-none"
         title=${value || ''}
       />
-      ${open && html`
+      ${open && !disabled && html`
         <div
           ref=${listRef}
           class="absolute z-50 left-0 right-0 mt-1 bg-white border border-wa-border rounded-lg shadow-lg max-h-[240px] overflow-y-auto wa-scrollbar"

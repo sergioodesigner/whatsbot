@@ -8,6 +8,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from db.repositories import tenant_repo
+from db.repositories import master_policy_repo
 from server.auth import (
     generate_salt,
     hash_password,
@@ -314,3 +315,46 @@ def register_routes(app, registry):
             "connected_whatsapps": total_connected,
             "total_messages": total_messages,
         })
+
+    @app.get("/api/admin/ai-policy")
+    async def get_ai_policy(request: Request):
+        """Get global AI policy and per-tenant overrides."""
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        global_enabled = bool(master_policy_repo.get_global("api_models_enabled", True))
+        items = []
+        for t in tenant_repo.list_all():
+            tenant_enabled = bool(master_policy_repo.get_tenant(t["slug"], "api_models_enabled", True))
+            items.append(
+                {
+                    "slug": t["slug"],
+                    "name": t["name"],
+                    "enabled": tenant_enabled,
+                    "effective_enabled": global_enabled and tenant_enabled,
+                }
+            )
+        return _ok({"global_enabled": global_enabled, "tenants": items})
+
+    @app.put("/api/admin/ai-policy/global")
+    async def set_ai_policy_global(request: Request, body: dict):
+        """Enable/disable API+models globally across all tenants."""
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        enabled = bool(body.get("enabled", True))
+        master_policy_repo.set_global("api_models_enabled", enabled)
+        return _ok({"global_enabled": enabled})
+
+    @app.put("/api/admin/ai-policy/tenant/{slug}")
+    async def set_ai_policy_tenant(request: Request, slug: str, body: dict):
+        """Enable/disable API+models for a specific tenant."""
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        if not tenant_repo.get_by_slug(slug):
+            return _err("Empresa não encontrada.", status=404)
+        enabled = bool(body.get("enabled", True))
+        master_policy_repo.set_tenant(slug, "api_models_enabled", enabled)
+        global_enabled = bool(master_policy_repo.get_global("api_models_enabled", True))
+        return _ok({"slug": slug, "enabled": enabled, "effective_enabled": global_enabled and enabled})
