@@ -7,45 +7,60 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-100 text-slate-900 min-h-screen">
-  <main class="max-w-5xl mx-auto p-6 space-y-6">
+  <main class="max-w-6xl mx-auto p-6 space-y-6">
     <header class="bg-white rounded-xl shadow p-5">
       <h1 class="text-2xl font-bold">WhatsBot SaaS - Superadmin</h1>
-      <p class="text-sm text-slate-600 mt-1">Setup inicial, login e gestao de tenants.</p>
+      <p class="text-sm text-slate-600 mt-1">Gestão operacional e comercial dos tenants.</p>
       <p id="status" class="text-sm mt-3 text-slate-700">Carregando...</p>
     </header>
 
-    <section id="setup-section" class="grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
-      <div class="bg-white rounded-xl shadow p-5 space-y-3 md:col-span-2">
-        <h2 class="text-lg font-semibold">Setup inicial</h2>
-        <p class="text-sm text-slate-600">Cria o primeiro superadmin (uma unica vez).</p>
-        <form id="setup-form" class="space-y-3">
-          <input id="setup-username" class="w-full border rounded px-3 py-2" placeholder="Usuario" autocomplete="username" required />
-          <input id="setup-password" type="password" class="w-full border rounded px-3 py-2" placeholder="Senha (min 6)" autocomplete="new-password" required />
-          <button class="bg-slate-900 text-white px-4 py-2 rounded" type="submit">Criar superadmin</button>
-        </form>
-      </div>
+    <section id="setup-section" class="bg-white rounded-xl shadow p-5 space-y-3 hidden">
+      <h2 class="text-lg font-semibold">Setup inicial</h2>
+      <form id="setup-form" class="space-y-3">
+        <input id="setup-username" class="w-full border rounded px-3 py-2" placeholder="Usuário" autocomplete="username" required />
+        <input id="setup-password" type="password" class="w-full border rounded px-3 py-2" placeholder="Senha (min 6)" autocomplete="new-password" required />
+        <button class="bg-slate-900 text-white px-4 py-2 rounded" type="submit">Criar superadmin</button>
+      </form>
     </section>
 
-    <section id="login-section" class="grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
-      <div class="bg-white rounded-xl shadow p-5 space-y-3 md:col-span-2">
-        <h2 class="text-lg font-semibold">Login superadmin</h2>
-        <p class="text-sm text-slate-600">Entre para acessar o painel de tenants.</p>
-        <form id="login-form" class="space-y-3">
-          <input id="login-username" class="w-full border rounded px-3 py-2" placeholder="Usuario" autocomplete="username" required />
-          <input id="login-password" type="password" class="w-full border rounded px-3 py-2" placeholder="Senha" autocomplete="current-password" required />
-          <button class="bg-blue-700 text-white px-4 py-2 rounded" type="submit">Entrar</button>
-        </form>
-      </div>
+    <section id="login-section" class="bg-white rounded-xl shadow p-5 space-y-3 hidden">
+      <h2 class="text-lg font-semibold">Login superadmin</h2>
+      <form id="login-form" class="space-y-3">
+        <input id="login-username" class="w-full border rounded px-3 py-2" placeholder="Usuário" autocomplete="username" required />
+        <input id="login-password" type="password" class="w-full border rounded px-3 py-2" placeholder="Senha" autocomplete="current-password" required />
+        <button class="bg-blue-700 text-white px-4 py-2 rounded" type="submit">Entrar</button>
+      </form>
     </section>
 
     <section id="tenant-create-section" class="bg-white rounded-xl shadow p-5 space-y-4 hidden">
-      <h2 class="text-lg font-semibold">Criar empresa (tenant)</h2>
+      <h2 class="text-lg font-semibold">Criar empresa</h2>
       <form id="tenant-form" class="grid grid-cols-1 md:grid-cols-4 gap-3">
         <input id="tenant-name" class="border rounded px-3 py-2 md:col-span-2" placeholder="Nome da empresa" required />
         <input id="tenant-slug" class="border rounded px-3 py-2" placeholder="slug (ex: empresa1)" required />
         <button class="bg-emerald-700 text-white px-4 py-2 rounded" type="submit">Criar tenant</button>
       </form>
-      <p class="text-sm text-slate-600">A URL do tenant sera: <code class="bg-slate-100 px-1 rounded">&lt;slug&gt;.&lt;seu-dominio-base&gt;</code></p>
+    </section>
+
+    <section id="api-models-section" class="bg-white rounded-xl shadow p-5 space-y-4 hidden">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">API e modelos</h2>
+        <button id="refresh-ai-policy" class="border px-3 py-1 rounded">Atualizar</button>
+      </div>
+      <label class="inline-flex items-center gap-2 text-sm font-medium">
+        <input id="ai-policy-global-enabled" type="checkbox" class="w-4 h-4" />
+        Habilitar API e modelos globalmente
+      </label>
+      <div id="ai-policy-tenants" class="overflow-x-auto text-sm"></div>
+      <div class="border-t pt-3 flex items-center justify-between">
+        <div class="text-sm">
+          <div>Versão atual: <span id="admin-current-version" class="font-mono">...</span></div>
+          <div>Última versão: <span id="admin-latest-version" class="font-mono">...</span></div>
+        </div>
+        <div class="flex gap-2">
+          <button id="admin-check-update" class="border px-3 py-1 rounded">Verificar atualização</button>
+          <button id="admin-apply-update" class="bg-blue-700 text-white px-3 py-1 rounded">Atualizar WhatsBot</button>
+        </div>
+      </div>
     </section>
 
     <section id="tenants-section" class="bg-white rounded-xl shadow p-5 space-y-4 hidden">
@@ -53,113 +68,152 @@
         <h2 class="text-lg font-semibold">Tenants cadastrados</h2>
         <button id="refresh-tenants" class="border px-3 py-1 rounded">Atualizar</button>
       </div>
-      <div id="tenants" class="overflow-x-auto text-sm text-slate-700">
-        <p>Carregando lista...</p>
-      </div>
+      <div id="tenants" class="overflow-x-auto text-sm"></div>
     </section>
 
-    <section id="ai-policy-section" class="bg-white rounded-xl shadow p-5 space-y-4 hidden">
+    <section id="tenant-detail-section" class="bg-white rounded-xl shadow p-5 space-y-4 hidden">
       <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">Política global: API e modelos</h2>
-        <button id="refresh-ai-policy" class="border px-3 py-1 rounded">Atualizar</button>
+        <h2 id="tenant-detail-title" class="text-lg font-semibold">Painel do tenant</h2>
+        <button id="tenant-detail-close" class="border px-3 py-1 rounded">Fechar</button>
       </div>
-      <label class="inline-flex items-center gap-2 text-sm">
-        <input id="ai-policy-global-enabled" type="checkbox" class="w-4 h-4" />
-        Habilitar API e modelos globalmente
-      </label>
-      <p class="text-xs text-slate-500">Quando desativado aqui, o painel da empresa não pode reativar.</p>
-      <div id="ai-policy-tenants" class="overflow-x-auto text-sm text-slate-700"></div>
+      <div class="flex flex-wrap gap-2">
+        <button data-tenant-tab="costs" class="tenant-tab px-3 py-1.5 rounded bg-slate-900 text-white">Custos</button>
+        <button data-tenant-tab="executions" class="tenant-tab px-3 py-1.5 rounded border">Execuções</button>
+        <button data-tenant-tab="sandbox" class="tenant-tab px-3 py-1.5 rounded border">Sandbox</button>
+        <button data-tenant-tab="api" class="tenant-tab px-3 py-1.5 rounded border">API</button>
+        <button data-tenant-tab="company" class="tenant-tab px-3 py-1.5 rounded border">Empresa</button>
+      </div>
+
+      <div id="tenant-tab-frame" class="hidden h-[72vh] border rounded overflow-hidden">
+        <iframe id="tenant-frame" class="w-full h-full border-0"></iframe>
+      </div>
+
+      <div id="tenant-tab-api" class="hidden space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label class="text-sm">API Key
+            <input id="tenant-api-key" type="text" class="w-full border rounded px-3 py-2 mt-1" placeholder="sk-or-..." />
+          </label>
+          <label class="text-sm">Execuções salvas
+            <input id="tenant-max-executions" type="number" min="10" max="10000" class="w-full border rounded px-3 py-2 mt-1" />
+          </label>
+          <label class="text-sm">Modelo chat
+            <input id="tenant-model" type="text" class="w-full border rounded px-3 py-2 mt-1" />
+          </label>
+          <label class="text-sm">Modelo áudio
+            <input id="tenant-audio-model" type="text" class="w-full border rounded px-3 py-2 mt-1" />
+          </label>
+          <label class="text-sm md:col-span-2">Modelo imagem
+            <input id="tenant-image-model" type="text" class="w-full border rounded px-3 py-2 mt-1" />
+          </label>
+        </div>
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input id="tenant-api-enabled" type="checkbox" class="w-4 h-4" />
+          Permitir API e modelos para esta empresa
+        </label>
+        <button id="save-tenant-api" class="bg-blue-700 text-white px-4 py-2 rounded">Salvar API</button>
+      </div>
+
+      <div id="tenant-tab-company" class="hidden space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label class="text-sm">Nome do responsável
+            <input id="company-owner-name" class="w-full border rounded px-3 py-2 mt-1" />
+          </label>
+          <label class="text-sm">Telefone
+            <input id="company-owner-phone" class="w-full border rounded px-3 py-2 mt-1" />
+          </label>
+          <label class="text-sm">Plano
+            <input id="company-plan-name" class="w-full border rounded px-3 py-2 mt-1" />
+          </label>
+          <label class="text-sm">Valor mensal
+            <input id="company-plan-amount" type="number" step="0.01" class="w-full border rounded px-3 py-2 mt-1" />
+          </label>
+          <label class="text-sm">Dia vencimento
+            <input id="company-due-day" type="number" min="1" max="31" class="w-full border rounded px-3 py-2 mt-1" />
+          </label>
+          <label class="text-sm">Início contrato
+            <input id="company-contract-start" type="date" class="w-full border rounded px-3 py-2 mt-1" />
+          </label>
+          <label class="text-sm">Fim contrato
+            <input id="company-contract-end" type="date" class="w-full border rounded px-3 py-2 mt-1" />
+          </label>
+          <label class="text-sm md:col-span-2">Observações
+            <textarea id="company-notes" class="w-full border rounded px-3 py-2 mt-1"></textarea>
+          </label>
+        </div>
+        <button id="save-company-profile" class="bg-blue-700 text-white px-4 py-2 rounded">Salvar dados da empresa</button>
+
+        <div class="border-t pt-4">
+          <h3 class="font-semibold mb-2">Mini financeiro (manual)</h3>
+          <div class="flex gap-2 items-end flex-wrap">
+            <label class="text-sm">Período (YYYY-MM)
+              <input id="invoice-period" class="border rounded px-3 py-2 mt-1" placeholder="2026-04" />
+            </label>
+            <label class="text-sm">Vencimento
+              <input id="invoice-due-date" type="date" class="border rounded px-3 py-2 mt-1" />
+            </label>
+            <label class="text-sm">Valor
+              <input id="invoice-amount" type="number" step="0.01" class="border rounded px-3 py-2 mt-1" />
+            </label>
+            <label class="inline-flex items-center gap-2 text-sm mb-2">
+              <input id="invoice-paid" type="checkbox" class="w-4 h-4" />
+              Pago
+            </label>
+            <button id="save-invoice-btn" class="bg-emerald-700 text-white px-4 py-2 rounded">Salvar mensalidade</button>
+          </div>
+          <div id="invoice-list" class="overflow-x-auto mt-3 text-sm"></div>
+        </div>
+      </div>
     </section>
   </main>
-  <div id="tenant-modal" class="fixed inset-0 bg-black/60 z-50 hidden">
-    <div class="w-full h-full p-4 md:p-6">
-      <div class="w-full h-full bg-white rounded-xl overflow-hidden shadow-2xl flex flex-col">
-        <div class="px-4 py-3 border-b flex items-center justify-between">
-          <h3 id="tenant-modal-title" class="text-sm font-semibold text-slate-800">Visualização da empresa</h3>
-          <button id="tenant-modal-close" type="button" class="px-3 py-1.5 border rounded text-sm hover:bg-slate-50">Fechar</button>
-        </div>
-        <iframe id="tenant-modal-frame" class="w-full flex-1 border-0" referrerpolicy="no-referrer"></iframe>
-      </div>
-    </div>
-  </div>
 
   <script>
     const statusEl = document.getElementById("status");
-    const tenantsEl = document.getElementById("tenants");
     const setupSection = document.getElementById("setup-section");
     const loginSection = document.getElementById("login-section");
     const tenantCreateSection = document.getElementById("tenant-create-section");
+    const apiModelsSection = document.getElementById("api-models-section");
     const tenantsSection = document.getElementById("tenants-section");
-    const aiPolicySection = document.getElementById("ai-policy-section");
+    const tenantDetailSection = document.getElementById("tenant-detail-section");
+    const tenantsEl = document.getElementById("tenants");
     const aiPolicyGlobalEnabled = document.getElementById("ai-policy-global-enabled");
     const aiPolicyTenants = document.getElementById("ai-policy-tenants");
-    const tenantModal = document.getElementById("tenant-modal");
-    const tenantModalTitle = document.getElementById("tenant-modal-title");
-    const tenantModalFrame = document.getElementById("tenant-modal-frame");
-    const tenantModalClose = document.getElementById("tenant-modal-close");
-    let adminToken = localStorage.getItem("whatsbot_admin_token") || "";
+    const tenantDetailTitle = document.getElementById("tenant-detail-title");
+    const tenantFrame = document.getElementById("tenant-frame");
+    const adminCurrentVersion = document.getElementById("admin-current-version");
+    const adminLatestVersion = document.getElementById("admin-latest-version");
 
-    function setStatus(message, isError = false) {
-      statusEl.textContent = message;
-      statusEl.className = isError
-        ? "text-sm mt-3 text-red-600"
-        : "text-sm mt-3 text-slate-700";
+    const tabFrame = document.getElementById("tenant-tab-frame");
+    const tabApi = document.getElementById("tenant-tab-api");
+    const tabCompany = document.getElementById("tenant-tab-company");
+
+    let adminToken = localStorage.getItem("whatsbot_admin_token") || "";
+    let currentTenantSlug = "";
+    let tenantRows = [];
+
+    function setStatus(msg, isError = false) {
+      statusEl.textContent = msg;
+      statusEl.className = isError ? "text-sm mt-3 text-red-600" : "text-sm mt-3 text-slate-700";
     }
 
     function tenantLink(slug, path) {
       const parts = window.location.host.split(".");
       if (parts.length < 2) return null;
-      const baseDomain = parts.slice(1).join(".");
-      const protocol = window.location.protocol || "https:";
-      return `${protocol}//${slug}.${baseDomain}${path}`;
-    }
-
-    function openModal(title, url) {
-      tenantModalTitle.textContent = title;
-      tenantModalFrame.src = url;
-      tenantModal.classList.remove("hidden");
-    }
-
-    function closeModal() {
-      tenantModal.classList.add("hidden");
-      tenantModalFrame.src = "about:blank";
-    }
-
-    async function openTenantView(slug, path, label) {
-      const baseUrl = tenantLink(slug, path);
-      if (!baseUrl) {
-        setStatus("Host inválido para abrir tenant.", true);
-        return;
-      }
-      try {
-        const delegated = await api(`/api/admin/tenants/${encodeURIComponent(slug)}/delegate-token`, {
-          method: "POST",
-          body: JSON.stringify({ ttl_seconds: 600 }),
-        });
-        const token = delegated.token || "";
-        if (!token) throw new Error("Token delegado não retornado.");
-        const separator = baseUrl.includes("?") ? "&" : "?";
-        const url = `${baseUrl}${separator}sa_token=${encodeURIComponent(token)}&sa_tenant=${encodeURIComponent(slug)}&sa_embed=1`;
-        openModal(`${slug} • ${label}`, url);
-      } catch (err) {
-        setStatus(`Falha ao abrir ${slug}: ${err.message}`, true);
-      }
+      return `${window.location.protocol}//${slug}.${parts.slice(1).join(".")}${path}`;
     }
 
     async function api(path, options = {}) {
-      const headers = Object.assign(
-        { "Content-Type": "application/json" },
-        options.headers || {}
-      );
-      if (adminToken) {
-        headers.Authorization = `Bearer ${adminToken}`;
-      }
+      const headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
+      if (adminToken) headers.Authorization = `Bearer ${adminToken}`;
       const res = await fetch(path, Object.assign({}, options, { headers }));
-      const data = await res.json().catch(() => ({ ok: false, error: "Resposta invalida" }));
-      if (!res.ok || data.ok === false) {
-        throw new Error(data.error || `Erro ${res.status}`);
-      }
+      const data = await res.json().catch(() => ({ ok: false, error: "Resposta inválida" }));
+      if (!res.ok || data.ok === false) throw new Error(data.error || `Erro ${res.status}`);
       return data.data;
+    }
+
+    function showMainSections(show) {
+      tenantCreateSection.classList.toggle("hidden", !show);
+      apiModelsSection.classList.toggle("hidden", !show);
+      tenantsSection.classList.toggle("hidden", !show);
     }
 
     async function loadSetupStatus() {
@@ -168,150 +222,214 @@
         if (data.needs_setup) {
           setupSection.classList.remove("hidden");
           loginSection.classList.add("hidden");
-          tenantCreateSection.classList.add("hidden");
-          tenantsSection.classList.add("hidden");
-          aiPolicySection.classList.add("hidden");
-          setStatus("Setup inicial pendente. Crie o primeiro superadmin.");
-        } else {
-          setupSection.classList.add("hidden");
-          loginSection.classList.remove("hidden");
-          if (adminToken) {
-            try {
-              await loadTenants();
-              loginSection.classList.add("hidden");
-              tenantCreateSection.classList.remove("hidden");
-              tenantsSection.classList.remove("hidden");
-              aiPolicySection.classList.remove("hidden");
-              setStatus("Sessao de superadmin restaurada.");
-              await loadAiPolicy();
-            } catch (_) {
-              adminToken = "";
-              localStorage.removeItem("whatsbot_admin_token");
-              tenantCreateSection.classList.add("hidden");
-              tenantsSection.classList.add("hidden");
-              aiPolicySection.classList.add("hidden");
-              setStatus("Superadmin ja configurado. Faca login.");
-            }
-          } else {
-            tenantCreateSection.classList.add("hidden");
-            tenantsSection.classList.add("hidden");
-            aiPolicySection.classList.add("hidden");
-            setStatus("Superadmin ja configurado. Faca login.");
-          }
+          showMainSections(false);
+          return setStatus("Setup inicial pendente.");
         }
+        setupSection.classList.add("hidden");
+        if (!adminToken) {
+          loginSection.classList.remove("hidden");
+          showMainSections(false);
+          return setStatus("Superadmin configurado. Faça login.");
+        }
+        loginSection.classList.add("hidden");
+        showMainSections(true);
+        await Promise.all([loadTenants(), loadAiPolicy(), loadUpdateInfo()]);
+        setStatus("Sessão de superadmin restaurada.");
       } catch (err) {
-        setStatus(`Falha ao consultar setup: ${err.message}`, true);
+        adminToken = "";
+        localStorage.removeItem("whatsbot_admin_token");
+        loginSection.classList.remove("hidden");
+        showMainSections(false);
+        setStatus(`Falha no setup: ${err.message}`, true);
       }
     }
 
-    async function loadTenants() {
-      try {
-        const tenants = await api("/api/admin/tenants");
-        if (!tenants.length) {
-          tenantsEl.innerHTML = "<p>Nenhum tenant cadastrado ainda.</p>";
-          return;
-        }
-        const rows = tenants.map((t) => {
-          const dashboardUrl = tenantLink(t.slug, "/dashboard");
-          const costsUrl = tenantLink(t.slug, "/costs");
-          const executionsUrl = tenantLink(t.slug, "/executions");
-          const sandboxUrl = tenantLink(t.slug, "/sandbox");
-          const links = [dashboardUrl, costsUrl, executionsUrl, sandboxUrl].every(Boolean)
-            ? `
-              <button class="text-blue-700 hover:underline mr-3" data-open-tenant="${t.slug}" data-open-path="/costs" type="button">Custos</button>
-              <button class="text-blue-700 hover:underline mr-3" data-open-tenant="${t.slug}" data-open-path="/executions" type="button">Execuções</button>
-              <button class="text-blue-700 hover:underline" data-open-tenant="${t.slug}" data-open-path="/sandbox" type="button">Sandbox</button>
-            `
-            : '<span class="text-slate-400">Host inválido para links por subdomínio</span>';
+    function financialBadge(financial) {
+      const status = financial?.status || "em_dia";
+      if (status === "atrasado") return '<span class="px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs font-semibold">Atrasado</span>';
+      if (status === "pendente") return '<span class="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700 text-xs font-semibold">Pendente</span>';
+      return '<span class="px-2 py-0.5 rounded bg-green-100 text-green-700 text-xs font-semibold">Em dia</span>';
+    }
 
-          return `
-          <tr class="border-b">
-            <td class="py-2 pr-4 font-medium">${t.name}</td>
-            <td class="py-2 pr-4">${t.slug}</td>
-            <td class="py-2 pr-4">${t.status}</td>
-            <td class="py-2 pr-4">${t.whatsapp_connected ? "Sim" : "Nao"}</td>
-            <td class="py-2 pr-4">${t.msg_count}</td>
-            <td class="py-2 pr-4 whitespace-nowrap">${links}</td>
-          </tr>
-        `;
-        }).join("");
-        tenantsEl.innerHTML = `
-          <table class="w-full text-left">
-            <thead>
-              <tr class="border-b">
-                <th class="py-2 pr-4">Nome</th>
-                <th class="py-2 pr-4">Slug</th>
-                <th class="py-2 pr-4">Status</th>
-                <th class="py-2 pr-4">WhatsApp</th>
-                <th class="py-2 pr-4">Mensagens</th>
-                <th class="py-2 pr-4">Ações por empresa</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        `;
-      } catch (err) {
-        tenantsEl.innerHTML = `<p class="text-red-600">Falha ao carregar tenants: ${err.message}</p>`;
-        throw err;
+    async function loadTenants() {
+      tenantRows = await api("/api/admin/tenants");
+      if (!tenantRows.length) {
+        tenantsEl.innerHTML = "<p>Nenhum tenant cadastrado.</p>";
+        return;
       }
+      tenantsEl.innerHTML = `
+        <table class="w-full text-left">
+          <thead><tr class="border-b">
+            <th class="py-2 pr-3">Nome</th>
+            <th class="py-2 pr-3">Slug</th>
+            <th class="py-2 pr-3">Status</th>
+            <th class="py-2 pr-3">WhatsApp</th>
+            <th class="py-2 pr-3">Mensagens</th>
+            <th class="py-2 pr-3">Financeiro</th>
+            <th class="py-2 pr-3">Ações</th>
+          </tr></thead>
+          <tbody>
+            ${tenantRows.map(t => `
+              <tr class="border-b">
+                <td class="py-2 pr-3 font-medium">${t.name}</td>
+                <td class="py-2 pr-3">${t.slug}</td>
+                <td class="py-2 pr-3">${t.status}</td>
+                <td class="py-2 pr-3">${t.whatsapp_connected ? "Sim" : "Não"}</td>
+                <td class="py-2 pr-3">${t.msg_count}</td>
+                <td class="py-2 pr-3">${financialBadge(t.financial)}</td>
+                <td class="py-2 pr-3"><button class="text-blue-700 hover:underline" data-open-tenant="${t.slug}">Abrir painel</button></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
     }
 
     async function loadAiPolicy() {
       const data = await api("/api/admin/ai-policy");
       aiPolicyGlobalEnabled.checked = !!data.global_enabled;
-      if (!data.tenants || !data.tenants.length) {
-        aiPolicyTenants.innerHTML = "<p>Nenhuma empresa para configurar.</p>";
-        return;
-      }
-      const rows = data.tenants.map((t) => `
-        <tr class="border-b">
-          <td class="py-2 pr-4 font-medium">${t.name}</td>
-          <td class="py-2 pr-4">${t.slug}</td>
-          <td class="py-2 pr-4">
-            <label class="inline-flex items-center gap-2">
-              <input type="checkbox" data-ai-tenant="${t.slug}" ${t.enabled ? "checked" : ""} ${data.global_enabled ? "" : "disabled"} />
-              <span>${t.enabled ? "Ativo" : "Inativo"}</span>
-            </label>
-          </td>
-          <td class="py-2 pr-4">${t.effective_enabled ? "Ativo" : "Bloqueado"}</td>
-        </tr>
-      `).join("");
       aiPolicyTenants.innerHTML = `
         <table class="w-full text-left">
-          <thead>
-            <tr class="border-b">
-              <th class="py-2 pr-4">Nome</th>
-              <th class="py-2 pr-4">Slug</th>
-              <th class="py-2 pr-4">Empresa pode editar</th>
-              <th class="py-2 pr-4">Status efetivo</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
+          <thead><tr class="border-b">
+            <th class="py-2 pr-3">Tenant</th>
+            <th class="py-2 pr-3">Permissão API</th>
+            <th class="py-2 pr-3">Status efetivo</th>
+          </tr></thead>
+          <tbody>
+            ${(data.tenants || []).map(t => `
+              <tr class="border-b">
+                <td class="py-2 pr-3">${t.name} <span class="text-slate-500">(${t.slug})</span></td>
+                <td class="py-2 pr-3">
+                  <input type="checkbox" data-ai-tenant="${t.slug}" ${t.enabled ? "checked" : ""} ${data.global_enabled ? "" : "disabled"} />
+                </td>
+                <td class="py-2 pr-3">${t.effective_enabled ? "Ativo" : "Bloqueado"}</td>
+              </tr>
+            `).join("")}
+          </tbody>
         </table>
       `;
     }
 
+    async function loadUpdateInfo() {
+      const data = await api("/api/admin/update/check");
+      adminCurrentVersion.textContent = data.current_version || "...";
+      adminLatestVersion.textContent = data.latest_version || "...";
+    }
+
+    async function getDelegatedUrl(slug, path) {
+      const base = tenantLink(slug, path);
+      if (!base) throw new Error("Host inválido.");
+      const delegated = await api(`/api/admin/tenants/${encodeURIComponent(slug)}/delegate-token`, {
+        method: "POST",
+        body: JSON.stringify({ ttl_seconds: 600 }),
+      });
+      const token = delegated.token || "";
+      if (!token) throw new Error("Token delegado inválido.");
+      const sep = base.includes("?") ? "&" : "?";
+      return `${base}${sep}sa_token=${encodeURIComponent(token)}&sa_tenant=${encodeURIComponent(slug)}&sa_embed=1`;
+    }
+
+    function activateTab(tab) {
+      document.querySelectorAll(".tenant-tab").forEach(btn => {
+        const on = btn.dataset.tenantTab === tab;
+        btn.className = on ? "tenant-tab px-3 py-1.5 rounded bg-slate-900 text-white" : "tenant-tab px-3 py-1.5 rounded border";
+      });
+      tabFrame.classList.toggle("hidden", !["costs", "executions", "sandbox"].includes(tab));
+      tabApi.classList.toggle("hidden", tab !== "api");
+      tabCompany.classList.toggle("hidden", tab !== "company");
+    }
+
+    async function openTenantDetail(slug, firstTab = "costs") {
+      currentTenantSlug = slug;
+      tenantDetailSection.classList.remove("hidden");
+      tenantDetailTitle.textContent = `Painel da empresa: ${slug}`;
+      activateTab(firstTab);
+      if (["costs", "executions", "sandbox"].includes(firstTab)) {
+        tenantFrame.src = await getDelegatedUrl(slug, `/${firstTab}`);
+      }
+      if (firstTab === "api") await loadTenantApiSettings(slug);
+      if (firstTab === "company") await loadTenantCompany(slug);
+    }
+
+    async function loadTenantApiSettings(slug) {
+      const data = await api(`/api/admin/tenants/${encodeURIComponent(slug)}/api-settings`);
+      document.getElementById("tenant-api-enabled").checked = !!data.api_models_enabled;
+      document.getElementById("tenant-api-enabled").disabled = !data.api_models_globally_enabled;
+      document.getElementById("tenant-api-key").value = data.openrouter_api_key || "";
+      document.getElementById("tenant-model").value = data.model || "";
+      document.getElementById("tenant-audio-model").value = data.audio_model || "";
+      document.getElementById("tenant-image-model").value = data.image_model || "";
+      document.getElementById("tenant-max-executions").value = data.max_executions ?? 200;
+    }
+
+    function dateInputFromTs(ts) {
+      if (!ts) return "";
+      const d = new Date(ts * 1000);
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${d.getFullYear()}-${month}-${day}`;
+    }
+
+    function tsFromDateInput(v) {
+      if (!v) return null;
+      return Math.floor(new Date(`${v}T00:00:00`).getTime() / 1000);
+    }
+
+    function renderInvoiceList(invoices = []) {
+      const el = document.getElementById("invoice-list");
+      if (!invoices.length) {
+        el.innerHTML = "<p class='text-slate-500'>Nenhuma mensalidade cadastrada.</p>";
+        return;
+      }
+      el.innerHTML = `
+        <table class="w-full text-left">
+          <thead><tr class="border-b">
+            <th class="py-2 pr-3">Período</th>
+            <th class="py-2 pr-3">Vencimento</th>
+            <th class="py-2 pr-3">Valor</th>
+            <th class="py-2 pr-3">Pago</th>
+          </tr></thead>
+          <tbody>
+            ${invoices.map(i => `
+              <tr class="border-b">
+                <td class="py-2 pr-3">${i.period_ym}</td>
+                <td class="py-2 pr-3">${dateInputFromTs(i.due_ts)}</td>
+                <td class="py-2 pr-3">R$ ${Number(i.amount || 0).toFixed(2)}</td>
+                <td class="py-2 pr-3">${i.paid ? "Sim" : "Não"}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    async function loadTenantCompany(slug) {
+      const data = await api(`/api/admin/tenants/${encodeURIComponent(slug)}/company`);
+      const p = data.profile || {};
+      document.getElementById("company-owner-name").value = p.owner_name || "";
+      document.getElementById("company-owner-phone").value = p.owner_phone || "";
+      document.getElementById("company-plan-name").value = p.plan_name || "";
+      document.getElementById("company-plan-amount").value = p.plan_amount ?? 0;
+      document.getElementById("company-due-day").value = p.due_day ?? 10;
+      document.getElementById("company-contract-start").value = dateInputFromTs(p.contract_start_ts);
+      document.getElementById("company-contract-end").value = dateInputFromTs(p.contract_end_ts);
+      document.getElementById("company-notes").value = p.notes || "";
+      renderInvoiceList(data.invoices || []);
+    }
+
     document.getElementById("setup-form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const username = document.getElementById("setup-username").value.trim();
-      const password = document.getElementById("setup-password").value;
       try {
         const data = await api("/api/admin/setup", {
           method: "POST",
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({
+            username: document.getElementById("setup-username").value.trim(),
+            password: document.getElementById("setup-password").value,
+          }),
         });
         adminToken = data.token || "";
-        if (adminToken) {
-          localStorage.setItem("whatsbot_admin_token", adminToken);
-        }
-        setupSection.classList.add("hidden");
-        loginSection.classList.add("hidden");
-        tenantCreateSection.classList.remove("hidden");
-        tenantsSection.classList.remove("hidden");
-        aiPolicySection.classList.remove("hidden");
-        setStatus("Superadmin criado com sucesso. Sessao iniciada.");
-        await loadTenants();
-        await loadAiPolicy();
+        localStorage.setItem("whatsbot_admin_token", adminToken);
+        await loadSetupStatus();
       } catch (err) {
         setStatus(`Erro no setup: ${err.message}`, true);
       }
@@ -319,24 +437,17 @@
 
     document.getElementById("login-form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const username = document.getElementById("login-username").value.trim();
-      const password = document.getElementById("login-password").value;
       try {
         const data = await api("/api/admin/login", {
           method: "POST",
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({
+            username: document.getElementById("login-username").value.trim(),
+            password: document.getElementById("login-password").value,
+          }),
         });
         adminToken = data.token || "";
-        if (adminToken) {
-          localStorage.setItem("whatsbot_admin_token", adminToken);
-        }
-        loginSection.classList.add("hidden");
-        tenantCreateSection.classList.remove("hidden");
-        tenantsSection.classList.remove("hidden");
-        aiPolicySection.classList.remove("hidden");
-        setStatus(`Login OK. Usuario: ${data.username}`);
-        await loadTenants();
-        await loadAiPolicy();
+        localStorage.setItem("whatsbot_admin_token", adminToken);
+        await loadSetupStatus();
       } catch (err) {
         setStatus(`Erro no login: ${err.message}`, true);
       }
@@ -344,14 +455,15 @@
 
     document.getElementById("tenant-form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const name = document.getElementById("tenant-name").value.trim();
       const slug = document.getElementById("tenant-slug").value.trim().toLowerCase();
       try {
         await api("/api/admin/tenants", {
           method: "POST",
-          body: JSON.stringify({ name, slug }),
+          body: JSON.stringify({
+            name: document.getElementById("tenant-name").value.trim(),
+            slug,
+          }),
         });
-        setStatus(`Tenant '${slug}' criado com sucesso.`);
         e.target.reset();
         await loadTenants();
       } catch (err) {
@@ -361,13 +473,31 @@
 
     document.getElementById("refresh-tenants").addEventListener("click", loadTenants);
     document.getElementById("refresh-ai-policy").addEventListener("click", loadAiPolicy);
+    document.getElementById("admin-check-update").addEventListener("click", async () => {
+      try {
+        await loadUpdateInfo();
+        setStatus("Versão verificada.");
+      } catch (err) {
+        setStatus(`Erro ao verificar atualização: ${err.message}`, true);
+      }
+    });
+    document.getElementById("admin-apply-update").addEventListener("click", async () => {
+      if (!confirm("Deseja atualizar o WhatsBot agora?")) return;
+      try {
+        const data = await api("/api/admin/update", { method: "POST" });
+        await loadUpdateInfo();
+        setStatus(data.message || "Atualização concluída.");
+      } catch (err) {
+        setStatus(`Erro ao atualizar: ${err.message}`, true);
+      }
+    });
     aiPolicyGlobalEnabled.addEventListener("change", async (e) => {
       try {
         await api("/api/admin/ai-policy/global", {
           method: "PUT",
           body: JSON.stringify({ enabled: e.target.checked }),
         });
-        await loadAiPolicy();
+        await Promise.all([loadAiPolicy(), loadTenants()]);
       } catch (err) {
         setStatus(`Erro ao atualizar política global: ${err.message}`, true);
       }
@@ -375,30 +505,114 @@
     aiPolicyTenants.addEventListener("change", async (e) => {
       const input = e.target.closest("input[data-ai-tenant]");
       if (!input) return;
-      const slug = input.getAttribute("data-ai-tenant");
       try {
-        await api(`/api/admin/ai-policy/tenant/${encodeURIComponent(slug)}`, {
+        await api(`/api/admin/ai-policy/tenant/${encodeURIComponent(input.dataset.aiTenant)}`, {
           method: "PUT",
           body: JSON.stringify({ enabled: input.checked }),
         });
-        await loadAiPolicy();
+        await Promise.all([loadAiPolicy(), loadTenants()]);
       } catch (err) {
-        setStatus(`Erro ao atualizar empresa ${slug}: ${err.message}`, true);
+        setStatus(`Erro ao atualizar tenant: ${err.message}`, true);
       }
     });
-    tenantModalClose.addEventListener("click", closeModal);
-    tenantModal.addEventListener("click", (e) => {
-      if (e.target === tenantModal) closeModal();
-    });
+
     tenantsEl.addEventListener("click", async (e) => {
-      const btn = e.target.closest("[data-open-tenant][data-open-path]");
+      const btn = e.target.closest("[data-open-tenant]");
       if (!btn) return;
-      e.preventDefault();
-      const slug = btn.getAttribute("data-open-tenant");
-      const path = btn.getAttribute("data-open-path");
-      const label = (btn.textContent || "").trim() || "Visão";
-      if (!slug || !path) return;
-      await openTenantView(slug, path, label);
+      try {
+        await openTenantDetail(btn.dataset.openTenant, "costs");
+      } catch (err) {
+        setStatus(`Erro ao abrir painel do tenant: ${err.message}`, true);
+      }
+    });
+
+    document.getElementById("tenant-detail-close").addEventListener("click", () => {
+      tenantDetailSection.classList.add("hidden");
+      tenantFrame.src = "about:blank";
+      currentTenantSlug = "";
+    });
+
+    document.querySelectorAll(".tenant-tab").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!currentTenantSlug) return;
+        const tab = btn.dataset.tenantTab;
+        activateTab(tab);
+        try {
+          if (["costs", "executions", "sandbox"].includes(tab)) {
+            tenantFrame.src = await getDelegatedUrl(currentTenantSlug, `/${tab}`);
+          } else if (tab === "api") {
+            await loadTenantApiSettings(currentTenantSlug);
+          } else if (tab === "company") {
+            await loadTenantCompany(currentTenantSlug);
+          }
+        } catch (err) {
+          setStatus(`Erro ao carregar aba ${tab}: ${err.message}`, true);
+        }
+      });
+    });
+
+    document.getElementById("save-tenant-api").addEventListener("click", async () => {
+      if (!currentTenantSlug) return;
+      try {
+        await api(`/api/admin/tenants/${encodeURIComponent(currentTenantSlug)}/api-settings`, {
+          method: "PUT",
+          body: JSON.stringify({
+            api_models_enabled: document.getElementById("tenant-api-enabled").checked,
+            openrouter_api_key: document.getElementById("tenant-api-key").value.trim(),
+            model: document.getElementById("tenant-model").value.trim(),
+            audio_model: document.getElementById("tenant-audio-model").value.trim(),
+            image_model: document.getElementById("tenant-image-model").value.trim(),
+            max_executions: parseInt(document.getElementById("tenant-max-executions").value || "200", 10),
+          }),
+        });
+        await Promise.all([loadTenants(), loadAiPolicy()]);
+        setStatus("Configurações de API salvas.");
+      } catch (err) {
+        setStatus(`Erro ao salvar API do tenant: ${err.message}`, true);
+      }
+    });
+
+    document.getElementById("save-company-profile").addEventListener("click", async () => {
+      if (!currentTenantSlug) return;
+      try {
+        await api(`/api/admin/tenants/${encodeURIComponent(currentTenantSlug)}/company`, {
+          method: "PUT",
+          body: JSON.stringify({
+            owner_name: document.getElementById("company-owner-name").value.trim(),
+            owner_phone: document.getElementById("company-owner-phone").value.trim(),
+            plan_name: document.getElementById("company-plan-name").value.trim(),
+            plan_amount: parseFloat(document.getElementById("company-plan-amount").value || "0"),
+            due_day: parseInt(document.getElementById("company-due-day").value || "10", 10),
+            contract_start_ts: tsFromDateInput(document.getElementById("company-contract-start").value),
+            contract_end_ts: tsFromDateInput(document.getElementById("company-contract-end").value),
+            notes: document.getElementById("company-notes").value.trim(),
+          }),
+        });
+        await Promise.all([loadTenantCompany(currentTenantSlug), loadTenants()]);
+        setStatus("Dados da empresa salvos.");
+      } catch (err) {
+        setStatus(`Erro ao salvar dados da empresa: ${err.message}`, true);
+      }
+    });
+
+    document.getElementById("save-invoice-btn").addEventListener("click", async () => {
+      if (!currentTenantSlug) return;
+      const period = document.getElementById("invoice-period").value.trim();
+      if (!period) return setStatus("Informe o período da mensalidade (YYYY-MM).", true);
+      try {
+        await api(`/api/admin/tenants/${encodeURIComponent(currentTenantSlug)}/invoices/${encodeURIComponent(period)}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            due_ts: tsFromDateInput(document.getElementById("invoice-due-date").value),
+            amount: parseFloat(document.getElementById("invoice-amount").value || "0"),
+            paid: document.getElementById("invoice-paid").checked,
+          }),
+        });
+        await Promise.all([loadTenantCompany(currentTenantSlug), loadTenants()]);
+        setStatus("Mensalidade salva.");
+      } catch (err) {
+        setStatus(`Erro ao salvar mensalidade: ${err.message}`, true);
+      }
     });
 
     loadSetupStatus();

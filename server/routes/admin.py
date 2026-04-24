@@ -3,12 +3,14 @@
 import logging
 import time
 import hmac
+import asyncio
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from db.repositories import tenant_repo
 from db.repositories import master_policy_repo
+from db.repositories import master_billing_repo
 from server.auth import (
     generate_salt,
     hash_password,
@@ -16,7 +18,9 @@ from server.auth import (
     generate_superadmin_delegate_token,
 )
 from server.helpers import _ok, _err
-from server.tenant import current_tenant_slug
+from server.tenant import current_tenant_slug, current_tenant_db
+from server.routes import update as update_routes
+from config.settings import get_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,13 @@ def _require_superadmin(request: Request) -> bool:
 
 
 def register_routes(app, registry):
+    def _with_tenant(slug: str):
+        ctx = registry.get_by_slug(slug)
+        if not ctx:
+            return None, None
+        token = current_tenant_db.set(ctx.db_name)
+        return ctx, token
+
     """Register superadmin routes on the FastAPI app."""
 
     # ── Auth guard for all admin routes ───────────────────────────────
@@ -127,6 +138,7 @@ def register_routes(app, registry):
             ctx = registry.get_by_slug(t["slug"])
             t["whatsapp_connected"] = ctx.state.connected if ctx else False
             t["msg_count"] = ctx.state.msg_count if ctx else 0
+            t["financial"] = master_billing_repo.get_financial_summary(t["slug"])
             result.append(t)
         return _ok(result)
 
@@ -358,3 +370,139 @@ def register_routes(app, registry):
         master_policy_repo.set_tenant(slug, "api_models_enabled", enabled)
         global_enabled = bool(master_policy_repo.get_global("api_models_enabled", True))
         return _ok({"slug": slug, "enabled": enabled, "effective_enabled": global_enabled and enabled})
+
+    @app.get("/api/admin/update/check")
+    async def admin_update_check(request: Request):
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        project_root = get_data_dir()
+        current = await asyncio.to_thread(update_routes._read_local_version, project_root)
+        latest = await asyncio.to_thread(update_routes._fetch_remote_version)
+        return _ok({
+            "current_version": current,
+            "latest_version": latest,
+            "update_available": bool(latest and latest != current),
+        })
+
+    @app.post("/api/admin/update")
+    async def admin_update_apply(request: Request):
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        project_root = get_data_dir()
+        try:
+            msg = await asyncio.to_thread(update_routes._perform_update, project_root)
+        except RuntimeError as exc:
+            return _err(str(exc), 500)
+        except Exception as exc:
+            logger.exception("Unexpected admin update error")
+            return _err(f"Erro inesperado: {exc}", 500)
+        return _ok({"message": msg})
+
+    @app.get("/api/admin/tenants/{slug}/api-settings")
+    async def get_tenant_api_settings(request: Request, slug: str):
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        if not tenant_repo.get_by_slug(slug):
+            return _err("Empresa não encontrada.", status=404)
+        global_enabled = bool(master_policy_repo.get_global("api_models_enabled", True))
+        tenant_enabled = bool(master_policy_repo.get_tenant(slug, "api_models_enabled", True))
+        ctx, token = _with_tenant(slug)
+        if not ctx:
+            return _err("Tenant não carregado.", status=404)
+        try:
+            settings = ctx.settings
+            return _ok(
+                {
+                    "api_models_globally_enabled": global_enabled,
+                    "api_models_enabled": tenant_enabled,
+                    "api_models_effective_enabled": global_enabled and tenant_enabled,
+                    "openrouter_api_key": settings.get("openrouter_api_key", ""),
+                    "model": settings.get("model", "openai/gpt-4o-mini"),
+                    "audio_model": settings.get("audio_model", "google/gemini-2.0-flash-001"),
+                    "image_model": settings.get("image_model", "google/gemini-2.0-flash-001"),
+                    "max_executions": settings.get("max_executions", 200),
+                }
+            )
+        finally:
+            current_tenant_db.reset(token)
+
+    @app.put("/api/admin/tenants/{slug}/api-settings")
+    async def save_tenant_api_settings(request: Request, slug: str, body: dict):
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        if not tenant_repo.get_by_slug(slug):
+            return _err("Empresa não encontrada.", status=404)
+
+        global_enabled = bool(master_policy_repo.get_global("api_models_enabled", True))
+        if "api_models_enabled" in body:
+            desired = bool(body.get("api_models_enabled"))
+            if desired and not global_enabled:
+                return _err("API e modelos estão desativados globalmente.", status=403)
+            master_policy_repo.set_tenant(slug, "api_models_enabled", desired)
+
+        ctx, token = _with_tenant(slug)
+        if not ctx:
+            return _err("Tenant não carregado.", status=404)
+        try:
+            settings = ctx.settings
+            allowed = {"openrouter_api_key", "model", "audio_model", "image_model", "max_executions"}
+            for key in allowed:
+                if key in body:
+                    settings[key] = body[key]
+            settings.save()
+            ctx.agent_handler.update_config(
+                api_key=settings.get("openrouter_api_key", ""),
+                system_prompt=settings.get("system_prompt", ""),
+                model=settings.get("model", "openai/gpt-4o-mini"),
+                audio_model=settings.get("audio_model", "google/gemini-2.0-flash-001"),
+                image_model=settings.get("image_model", "google/gemini-2.0-flash-001"),
+                max_context_messages=settings.get("max_context_messages", 10),
+                split_messages=settings.get("split_messages", True),
+                default_ai_enabled=settings.get("default_ai_enabled", True),
+            )
+            return _ok({"message": "Configurações de API salvas."})
+        finally:
+            current_tenant_db.reset(token)
+
+    @app.get("/api/admin/tenants/{slug}/company")
+    async def get_tenant_company(request: Request, slug: str):
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        tenant = tenant_repo.get_by_slug(slug)
+        if not tenant:
+            return _err("Empresa não encontrada.", status=404)
+        profile = master_billing_repo.get_profile(slug)
+        invoices = master_billing_repo.list_invoices(slug)
+        financial = master_billing_repo.get_financial_summary(slug)
+        return _ok({"tenant": tenant, "profile": profile, "invoices": invoices, "financial": financial})
+
+    @app.put("/api/admin/tenants/{slug}/company")
+    async def save_tenant_company(request: Request, slug: str, body: dict):
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        if not tenant_repo.get_by_slug(slug):
+            return _err("Empresa não encontrada.", status=404)
+        profile = master_billing_repo.upsert_profile(slug, body)
+        return _ok({"profile": profile})
+
+    @app.put("/api/admin/tenants/{slug}/invoices/{period_ym}")
+    async def upsert_tenant_invoice(request: Request, slug: str, period_ym: str, body: dict):
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        if not tenant_repo.get_by_slug(slug):
+            return _err("Empresa não encontrada.", status=404)
+        payload = dict(body or {})
+        payload["period_ym"] = period_ym
+        try:
+            invoice = master_billing_repo.upsert_invoice(slug, payload)
+        except ValueError as exc:
+            return _err(str(exc), status=400)
+        summary = master_billing_repo.get_financial_summary(slug)
+        return _ok({"invoice": invoice, "financial": summary})

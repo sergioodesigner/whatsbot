@@ -29,8 +29,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
   const [transferAlertEnabled, setTransferAlertEnabled] = useState(true);
   const [transferAlertDuration, setTransferAlertDuration] = useState(5);
   const [defaultAiEnabled, setDefaultAiEnabled] = useState(true);
-  const [apiModelsGloballyEnabled, setApiModelsGloballyEnabled] = useState(true);
-  const [apiModelsEffectiveEnabled, setApiModelsEffectiveEnabled] = useState(true);
   const [webPassword, setWebPassword] = useState('');
   const [webPasswordConfirm, setWebPasswordConfirm] = useState('');
   const [removePassword, setRemovePassword] = useState(false);
@@ -52,8 +50,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
       setTransferAlertEnabled(config.transfer_alert_enabled ?? true);
       setTransferAlertDuration(config.transfer_alert_duration ?? 5);
       setDefaultAiEnabled(config.default_ai_enabled ?? true);
-      setApiModelsGloballyEnabled(config.api_models_globally_enabled ?? true);
-      setApiModelsEffectiveEnabled(config.api_models_effective_enabled ?? true);
     }
   }, [config]);
 

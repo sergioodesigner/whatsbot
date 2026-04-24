@@ -37,3 +37,31 @@ CREATE TABLE IF NOT EXISTS tenant_policies (
     value           TEXT NOT NULL,
     PRIMARY KEY (tenant_slug, key)
 );
+
+CREATE TABLE IF NOT EXISTS tenant_company_profile (
+    tenant_slug         TEXT PRIMARY KEY,
+    owner_name          TEXT NOT NULL DEFAULT '',
+    owner_phone         TEXT NOT NULL DEFAULT '',
+    plan_name           TEXT NOT NULL DEFAULT '',
+    plan_amount         REAL NOT NULL DEFAULT 0,
+    due_day             INTEGER NOT NULL DEFAULT 10,
+    contract_start_ts   REAL,
+    contract_end_ts     REAL,
+    notes               TEXT NOT NULL DEFAULT '',
+    updated_at          REAL NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS tenant_billing_invoices (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_slug     TEXT NOT NULL,
+    period_ym       TEXT NOT NULL,
+    due_ts          REAL NOT NULL,
+    amount          REAL NOT NULL DEFAULT 0,
+    paid            INTEGER NOT NULL DEFAULT 0,
+    paid_at         REAL,
+    notes           TEXT NOT NULL DEFAULT '',
+    UNIQUE(tenant_slug, period_ym)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_billing_tenant ON tenant_billing_invoices(tenant_slug);
+CREATE INDEX IF NOT EXISTS idx_tenant_billing_due ON tenant_billing_invoices(due_ts);
