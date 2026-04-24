@@ -30,6 +30,22 @@ def _normalize_media_path(path: str | None) -> str | None:
         clean = clean.split(";", 1)[0].strip()
     if not clean:
         return None
+    clean = clean.replace("\\", "/").strip()
+
+    # Strip absolute prefixes and keep project-relative static paths.
+    if "/statics/" in clean:
+        clean = clean.split("/statics/", 1)[1]
+        clean = f"statics/{clean.lstrip('/')}"
+    elif clean.startswith("statics/"):
+        pass
+    elif clean.startswith("media/"):
+        clean = f"statics/{clean}"
+    elif clean.startswith("senditems/"):
+        clean = f"statics/{clean}"
+    elif "/" not in clean:
+        # GOWA sometimes sends only the filename for media payloads.
+        clean = f"statics/media/{clean}"
+
     return clean
 
 
@@ -638,6 +654,13 @@ def register_routes(app, deps):
         sender_jid = data.get("sender_jid", "") or data.get("sender", "")
 
         is_group = "@g.us" in chat_jid
+        is_channel = any(tag in chat_jid for tag in ("@newsletter", "@broadcast"))
+
+        # Ignore channels/newsletters/broadcasts. The panel should show only
+        # private chats and groups.
+        if is_channel:
+            logger.info("[Webhook] Ignoring channel/broadcast message from chat_jid=%s", chat_jid)
+            return _ok({"status": "ignored_channel"})
 
         if is_group:
             # For groups: route replies to the group, track individual sender

@@ -9,9 +9,22 @@ const SPEEDS = [1, 1.5, 2];
 function normalizeMediaSrc(src, isLocalBlob) {
   if (!src) return '';
   if (isLocalBlob) return src;
-  const clean = String(src).trim().split(';')[0].trim();
+  let clean = String(src).trim().split(';')[0].trim().replace(/\\/g, '/');
+  if (!clean) return '';
   if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('blob:')) {
     return clean;
+  }
+  if (clean.includes('/statics/')) {
+    clean = clean.split('/statics/')[1];
+    clean = `statics/${clean.replace(/^\/+/, '')}`;
+  } else if (clean.startsWith('/statics/')) {
+    clean = clean.replace(/^\/+/, '');
+  } else if (clean.startsWith('media/')) {
+    clean = `statics/${clean}`;
+  } else if (clean.startsWith('senditems/')) {
+    clean = `statics/${clean}`;
+  } else if (!clean.includes('/')) {
+    clean = `statics/media/${clean}`;
   }
   return clean.startsWith('/') ? clean : `/${clean}`;
 }
