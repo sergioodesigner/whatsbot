@@ -378,6 +378,7 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
     ? (groupNameIsGeneric ? 'Grupo sem nome' : groupRawName)
     : (rawName ? rawName.replace(/^~/, '') : phone);
   const hasText = input.trim().length > 0;
+  const avatarUrl = phone ? `/api/contacts/${encodeURIComponent(phone)}/avatar` : null;
 
   return html`
     <div class="flex flex-col h-full">
@@ -388,8 +389,8 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
         </button>
         <div onClick=${onAvatarClick} class="w-[40px] h-[40px] rounded-full overflow-hidden shrink-0 mr-[13px] cursor-pointer">
           ${isGroup
-            ? html`<${GroupAvatar} size=${40} avatarUrl=${phone ? "/statics/avatars/" + phone + ".jpg" : null} />`
-            : html`<${DefaultAvatar} size=${40} avatarUrl=${phone ? "/statics/avatars/" + phone + ".jpg" : null} />`
+            ? html`<${GroupAvatar} size=${40} avatarUrl=${avatarUrl} />`
+            : html`<${DefaultAvatar} size=${40} avatarUrl=${avatarUrl} />`
           }
         </div>
         <div class="flex-1 min-w-0 cursor-pointer" onClick=${onAvatarClick}>

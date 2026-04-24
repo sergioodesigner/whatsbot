@@ -29,6 +29,15 @@ function normalizeMediaSrc(src, isLocalBlob) {
   return clean.startsWith('/') ? clean : `/${clean}`;
 }
 
+function inferAudioMimeType(src) {
+  const clean = String(src || '').split('?')[0].toLowerCase();
+  if (clean.endsWith('.ogg') || clean.endsWith('.opus')) return 'audio/ogg';
+  if (clean.endsWith('.mp3')) return 'audio/mpeg';
+  if (clean.endsWith('.wav')) return 'audio/wav';
+  if (clean.endsWith('.m4a') || clean.endsWith('.aac')) return 'audio/mp4';
+  return 'audio/ogg';
+}
+
 export function AudioPlayer({ src, isLocalBlob }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
@@ -91,13 +100,12 @@ export function AudioPlayer({ src, isLocalBlob }) {
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
   const speed = SPEEDS[speedIdx];
+  const mimeType = inferAudioMimeType(audioSrc);
 
   return html`
     <div class="flex items-center gap-[8px] mb-1" style="min-width:240px">
       <audio ref=${audioRef} preload="metadata">
-        <source src="${audioSrc}" type="audio/wav" />
-        <source src="${audioSrc}" type="audio/ogg" />
-        <source src="${audioSrc}" type="audio/mpeg" />
+        <source src="${audioSrc}" type="${mimeType}" />
       </audio>
 
       <!-- Play/Pause -->
