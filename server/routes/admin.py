@@ -2,6 +2,7 @@
 
 import logging
 import time
+import hmac
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -24,13 +25,30 @@ def register_routes(app, registry):
 
     # ── Auth guard for all admin routes ───────────────────────────────
 
-    def _check_admin(request: Request):
+    def _has_valid_admin_token(request: Request) -> bool:
+        auth_header = request.headers.get("authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return False
+        token = auth_header[7:].strip()
+        if not token:
+            return False
+        for admin in tenant_repo.list_superadmins():
+            expected = generate_token(admin.get("password_hash", ""), admin.get("salt", ""))
+            if expected and hmac.compare_digest(token, expected):
+                return True
+        return False
+
+    def _check_admin(request: Request, *, require_token: bool = True):
         if not _require_superadmin(request):
             return JSONResponse(
                 {"ok": False, "error": "Acesso negado."},
                 status_code=403,
             )
-        # TODO: Validate superadmin JWT/session token from header
+        if require_token and not _has_valid_admin_token(request):
+            return JSONResponse(
+                {"ok": False, "error": "Não autenticado."},
+                status_code=401,
+            )
         return None
 
     # ── Setup (first-time superadmin creation) ────────────────────────
@@ -38,11 +56,17 @@ def register_routes(app, registry):
     @app.get("/api/admin/setup-status")
     async def setup_status(request: Request):
         """Check if the initial superadmin account has been created."""
+        guard = _check_admin(request, require_token=False)
+        if guard:
+            return guard
         return _ok({"needs_setup": not tenant_repo.superadmin_exists()})
 
     @app.post("/api/admin/setup")
     async def setup(request: Request, body: dict):
         """Create the initial superadmin account (one-time setup)."""
+        guard = _check_admin(request, require_token=False)
+        if guard:
+            return guard
         if tenant_repo.superadmin_exists():
             return _err("Superadmin já configurado.")
         username = body.get("username", "").strip()
@@ -62,6 +86,9 @@ def register_routes(app, registry):
     @app.post("/api/admin/login")
     async def admin_login(request: Request, body: dict):
         """Authenticate as superadmin."""
+        guard = _check_admin(request, require_token=False)
+        if guard:
+            return guard
         username = body.get("username", "").strip()
         password = body.get("password", "").strip()
         if not username or not password:

@@ -17,6 +17,22 @@ from server.helpers import _ok
 logger = logging.getLogger(__name__)
 
 
+def _normalize_media_path(path: str | None) -> str | None:
+    """Normalize media paths coming from GOWA payloads.
+
+    GOWA can append codec metadata like "; codecs=opus" to file names.
+    Keep only the actual path segment so static file serving works.
+    """
+    if not path:
+        return None
+    clean = str(path).strip().strip('"').strip("'")
+    if ";" in clean:
+        clean = clean.split(";", 1)[0].strip()
+    if not clean:
+        return None
+    return clean
+
+
 def register_routes(app, deps):
     agent_handler = deps.agent_handler
     gowa_client = deps.gowa_client
@@ -557,30 +573,56 @@ def register_routes(app, deps):
         # Extract media paths from GOWA payload
         image_path: str | None = None
         audio_path: str | None = None
+        gif_path: str | None = None
 
         raw_image = data.get("image")
         if raw_image:
             if isinstance(raw_image, str):
-                image_path = raw_image
+                image_path = _normalize_media_path(raw_image)
             elif isinstance(raw_image, dict):
-                image_path = raw_image.get("path", "")
+                image_path = _normalize_media_path(raw_image.get("path", ""))
                 if not text:
                     text = (raw_image.get("caption", "") or "").strip()
 
         raw_audio = data.get("audio")
         if raw_audio:
             if isinstance(raw_audio, str):
-                audio_path = raw_audio
+                audio_path = _normalize_media_path(raw_audio)
             elif isinstance(raw_audio, dict):
-                audio_path = raw_audio.get("path", "")
+                audio_path = _normalize_media_path(raw_audio.get("path", ""))
+
+        # WhatsApp GIFs may arrive under "video" with gif flags/mime.
+        raw_video = data.get("video")
+        if raw_video:
+            if isinstance(raw_video, str):
+                candidate = _normalize_media_path(raw_video)
+                if candidate and candidate.lower().endswith(".gif"):
+                    gif_path = candidate
+            elif isinstance(raw_video, dict):
+                candidate = _normalize_media_path(raw_video.get("path", ""))
+                mime = str(raw_video.get("mimetype", raw_video.get("mime_type", ""))).lower()
+                is_gif = bool(
+                    raw_video.get("is_gif")
+                    or raw_video.get("gif_playback")
+                    or "gif" in mime
+                    or (candidate and candidate.lower().endswith(".gif"))
+                )
+                if is_gif:
+                    gif_path = candidate
+                if not text:
+                    text = (raw_video.get("caption", "") or "").strip()
+
+        # Reuse image pipeline for GIF rendering in the current frontend.
+        if gif_path and not image_path:
+            image_path = gif_path
 
         # Video notes (voice messages) are treated as audio
         raw_vn = data.get("video_note")
         if raw_vn and not audio_path:
             if isinstance(raw_vn, str):
-                audio_path = raw_vn
+                audio_path = _normalize_media_path(raw_vn)
             elif isinstance(raw_vn, dict):
-                audio_path = raw_vn.get("path", "")
+                audio_path = _normalize_media_path(raw_vn.get("path", ""))
 
         # For audio without text, set a placeholder
         if audio_path and not text:
@@ -753,6 +795,15 @@ def register_routes(app, deps):
             logger.warning("[Webhook] Failed to check archive status for %s: %s", phone, e)
 
         # Auto-fill contact name from WhatsApp pushName (private chats only)
+        # Some payloads arrive without from_name; fallback to user/info API.
+        if not from_name and not is_group:
+            try:
+                from_name = await asyncio.to_thread(
+                    gowa_client.get_contact_name,
+                    sender_jid or phone,
+                )
+            except Exception:
+                from_name = ""
         if from_name and not is_group:
             await asyncio.to_thread(agent_handler._get_contact(phone).set_wa_name, from_name)
 

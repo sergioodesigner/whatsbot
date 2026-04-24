@@ -122,6 +122,12 @@ def _main_saas(data_dir: Path):
     )
     logger = logging.getLogger("whatsbot")
     logger.info("WhatsBot starting (SaaS multi-tenant mode)...")
+    is_docker = os.environ.get("WHATSBOT_DOCKER") == "1" or Path("/.dockerenv").exists()
+    if is_docker and str(data_dir) != "/data":
+        logger.warning(
+            "SaaS running in Docker without WHATSBOT_DATA_DIR=/data. "
+            "Sessions and tenant databases may be lost on deploy."
+        )
 
     # Initialize the master database
     from db.master_connection import init_master_db

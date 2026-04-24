@@ -14,8 +14,8 @@
       <p id="status" class="text-sm mt-3 text-slate-700">Carregando...</p>
     </header>
 
-    <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div class="bg-white rounded-xl shadow p-5 space-y-3">
+    <section id="setup-section" class="grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
+      <div class="bg-white rounded-xl shadow p-5 space-y-3 md:col-span-2">
         <h2 class="text-lg font-semibold">Setup inicial</h2>
         <p class="text-sm text-slate-600">Cria o primeiro superadmin (uma unica vez).</p>
         <form id="setup-form" class="space-y-3">
@@ -24,10 +24,12 @@
           <button class="bg-slate-900 text-white px-4 py-2 rounded" type="submit">Criar superadmin</button>
         </form>
       </div>
+    </section>
 
-      <div class="bg-white rounded-xl shadow p-5 space-y-3">
+    <section id="login-section" class="grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
+      <div class="bg-white rounded-xl shadow p-5 space-y-3 md:col-span-2">
         <h2 class="text-lg font-semibold">Login superadmin</h2>
-        <p class="text-sm text-slate-600">Atualmente o backend valida por subdominio admin.</p>
+        <p class="text-sm text-slate-600">Entre para acessar o painel de tenants.</p>
         <form id="login-form" class="space-y-3">
           <input id="login-username" class="w-full border rounded px-3 py-2" placeholder="Usuario" required />
           <input id="login-password" type="password" class="w-full border rounded px-3 py-2" placeholder="Senha" required />
@@ -36,7 +38,7 @@
       </div>
     </section>
 
-    <section class="bg-white rounded-xl shadow p-5 space-y-4">
+    <section id="tenant-create-section" class="bg-white rounded-xl shadow p-5 space-y-4 hidden">
       <h2 class="text-lg font-semibold">Criar empresa (tenant)</h2>
       <form id="tenant-form" class="grid grid-cols-1 md:grid-cols-4 gap-3">
         <input id="tenant-name" class="border rounded px-3 py-2 md:col-span-2" placeholder="Nome da empresa" required />
@@ -46,7 +48,7 @@
       <p class="text-sm text-slate-600">A URL do tenant sera: <code class="bg-slate-100 px-1 rounded">&lt;slug&gt;.&lt;seu-dominio-base&gt;</code></p>
     </section>
 
-    <section class="bg-white rounded-xl shadow p-5 space-y-4">
+    <section id="tenants-section" class="bg-white rounded-xl shadow p-5 space-y-4 hidden">
       <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold">Tenants cadastrados</h2>
         <button id="refresh-tenants" class="border px-3 py-1 rounded">Atualizar</button>
@@ -60,7 +62,11 @@
   <script>
     const statusEl = document.getElementById("status");
     const tenantsEl = document.getElementById("tenants");
-    let adminToken = "";
+    const setupSection = document.getElementById("setup-section");
+    const loginSection = document.getElementById("login-section");
+    const tenantCreateSection = document.getElementById("tenant-create-section");
+    const tenantsSection = document.getElementById("tenants-section");
+    let adminToken = localStorage.getItem("whatsbot_admin_token") || "";
 
     function setStatus(message, isError = false) {
       statusEl.textContent = message;
@@ -89,9 +95,33 @@
       try {
         const data = await api("/api/admin/setup-status");
         if (data.needs_setup) {
+          setupSection.classList.remove("hidden");
+          loginSection.classList.add("hidden");
+          tenantCreateSection.classList.add("hidden");
+          tenantsSection.classList.add("hidden");
           setStatus("Setup inicial pendente. Crie o primeiro superadmin.");
         } else {
-          setStatus("Superadmin ja configurado. Faca login.");
+          setupSection.classList.add("hidden");
+          loginSection.classList.remove("hidden");
+          if (adminToken) {
+            try {
+              await loadTenants();
+              loginSection.classList.add("hidden");
+              tenantCreateSection.classList.remove("hidden");
+              tenantsSection.classList.remove("hidden");
+              setStatus("Sessao de superadmin restaurada.");
+            } catch (_) {
+              adminToken = "";
+              localStorage.removeItem("whatsbot_admin_token");
+              tenantCreateSection.classList.add("hidden");
+              tenantsSection.classList.add("hidden");
+              setStatus("Superadmin ja configurado. Faca login.");
+            }
+          } else {
+            tenantCreateSection.classList.add("hidden");
+            tenantsSection.classList.add("hidden");
+            setStatus("Superadmin ja configurado. Faca login.");
+          }
         }
       } catch (err) {
         setStatus(`Falha ao consultar setup: ${err.message}`, true);
@@ -130,6 +160,7 @@
         `;
       } catch (err) {
         tenantsEl.innerHTML = `<p class="text-red-600">Falha ao carregar tenants: ${err.message}</p>`;
+        throw err;
       }
     }
 
@@ -143,7 +174,14 @@
           body: JSON.stringify({ username, password }),
         });
         adminToken = data.token || "";
-        setStatus("Superadmin criado com sucesso.");
+        if (adminToken) {
+          localStorage.setItem("whatsbot_admin_token", adminToken);
+        }
+        setupSection.classList.add("hidden");
+        loginSection.classList.add("hidden");
+        tenantCreateSection.classList.remove("hidden");
+        tenantsSection.classList.remove("hidden");
+        setStatus("Superadmin criado com sucesso. Sessao iniciada.");
         await loadTenants();
       } catch (err) {
         setStatus(`Erro no setup: ${err.message}`, true);
@@ -160,6 +198,12 @@
           body: JSON.stringify({ username, password }),
         });
         adminToken = data.token || "";
+        if (adminToken) {
+          localStorage.setItem("whatsbot_admin_token", adminToken);
+        }
+        loginSection.classList.add("hidden");
+        tenantCreateSection.classList.remove("hidden");
+        tenantsSection.classList.remove("hidden");
         setStatus(`Login OK. Usuario: ${data.username}`);
         await loadTenants();
       } catch (err) {
@@ -187,7 +231,6 @@
     document.getElementById("refresh-tenants").addEventListener("click", loadTenants);
 
     loadSetupStatus();
-    loadTenants();
   </script>
 </body>
 </html>

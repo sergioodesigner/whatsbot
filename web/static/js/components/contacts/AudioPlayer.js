@@ -6,6 +6,16 @@ const html = htm.bind(h);
 
 const SPEEDS = [1, 1.5, 2];
 
+function normalizeMediaSrc(src, isLocalBlob) {
+  if (!src) return '';
+  if (isLocalBlob) return src;
+  const clean = String(src).trim().split(';')[0].trim();
+  if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('blob:')) {
+    return clean;
+  }
+  return clean.startsWith('/') ? clean : `/${clean}`;
+}
+
 export function AudioPlayer({ src, isLocalBlob }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
@@ -13,7 +23,7 @@ export function AudioPlayer({ src, isLocalBlob }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [speedIdx, setSpeedIdx] = useState(0);
 
-  const audioSrc = isLocalBlob ? src : '/' + src;
+  const audioSrc = normalizeMediaSrc(src, isLocalBlob);
 
   useEffect(() => {
     const a = audioRef.current;

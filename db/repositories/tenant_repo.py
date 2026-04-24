@@ -173,3 +173,12 @@ def superadmin_exists() -> bool:
     conn = get_master_db()
     row = conn.execute("SELECT COUNT(*) as c FROM superadmins").fetchone()
     return (row["c"] if row else 0) > 0
+
+
+def list_superadmins() -> list[dict]:
+    """Return all superadmin accounts (for token validation)."""
+    conn = get_master_db()
+    rows = conn.execute(
+        "SELECT * FROM superadmins ORDER BY created_at ASC"
+    ).fetchall()
+    return [_row_to_dict(r) for r in rows]

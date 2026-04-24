@@ -2,6 +2,7 @@ import { h } from 'preact';
 import htm from 'htm';
 
 const html = htm.bind(h);
+const brokenAvatarUrls = new Set();
 
 // ── SVG Icons (WhatsApp Web exact style) ─────────────────────────
 
@@ -30,7 +31,7 @@ export function BackArrowIcon() {
 }
 
 export function DefaultAvatar({ size = 49, avatarUrl }) {
-  if (avatarUrl) {
+  if (avatarUrl && !brokenAvatarUrls.has(avatarUrl)) {
     return html`
       <img
         src=${avatarUrl}
@@ -38,6 +39,7 @@ export function DefaultAvatar({ size = 49, avatarUrl }) {
         class="w-full h-full object-cover"
         style="display:block;"
         onError=${(e) => {
+          brokenAvatarUrls.add(avatarUrl);
           // Replace with SVG fallback on error
           const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
           svg.setAttribute('viewBox', '0 0 212 212');
@@ -58,7 +60,7 @@ export function DefaultAvatar({ size = 49, avatarUrl }) {
 }
 
 export function GroupAvatar({ size = 49, avatarUrl }) {
-  if (avatarUrl) {
+  if (avatarUrl && !brokenAvatarUrls.has(avatarUrl)) {
     return html`
       <img
         src=${avatarUrl}
@@ -66,6 +68,7 @@ export function GroupAvatar({ size = 49, avatarUrl }) {
         class="w-full h-full object-cover"
         style="display:block;"
         onError=${(e) => {
+          brokenAvatarUrls.add(avatarUrl);
           const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
           svg.setAttribute('viewBox', '0 0 212 212');
           svg.setAttribute('width', size);

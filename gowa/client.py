@@ -480,6 +480,14 @@ class GOWAClient:
             logger.warning("_get_user_info failed for %s: %s", jid, e)
             return {}
 
+    def get_contact_name(self, phone_or_jid: str) -> str:
+        """Resolve WhatsApp push name for a contact (best-effort)."""
+        if not phone_or_jid:
+            return ""
+        jid = phone_or_jid if "@" in phone_or_jid else f"{self._clean_phone(phone_or_jid)}@s.whatsapp.net"
+        info = self._get_user_info(jid)
+        return info.get("name", "") if isinstance(info, dict) else ""
+
     # ── Avatar ───────────────────────────────────────────────────────
 
     def get_avatar(self, phone: str, is_preview: bool = True) -> bytes | None:

@@ -9,6 +9,16 @@ import { AudioPlayer } from './AudioPlayer.js';
 
 const html = htm.bind(h);
 
+function normalizeMediaSrc(src, isLocalBlob) {
+  if (!src) return '';
+  if (isLocalBlob) return src;
+  const clean = String(src).trim().split(';')[0].trim();
+  if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('blob:')) {
+    return clean;
+  }
+  return clean.startsWith('/') ? clean : `/${clean}`;
+}
+
 // ── Contact Detail (WhatsApp Web chat panel) ─────────────────────
 
 export function ContactDetail({ phone, onBack, messages, info, contact, onAvatarClick, contactTyping, setContactData, globalTags }) {
@@ -426,11 +436,11 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
                   }" style="${isFailed ? 'background: #fce8e8;' : ''}">
                     ${m.media_type === 'image' ? html`
                       <img
-                        src="${m._isLocalBlob ? m.media_path : '/' + m.media_path}"
+                        src="${normalizeMediaSrc(m.media_path, m._isLocalBlob)}"
                         alt="Imagem"
                         class="rounded-[4px] max-w-full max-h-[300px] mb-1 cursor-pointer"
                         style="min-width:120px"
-                        onClick=${() => window.open(m._isLocalBlob ? m.media_path : '/' + m.media_path, '_blank')}
+                        onClick=${() => window.open(normalizeMediaSrc(m.media_path, m._isLocalBlob), '_blank')}
                         loading="lazy"
                       />
                       ${m.content && m.content !== '[Imagem enviada pelo contato]' && !m.content.startsWith('[Descrição da imagem]')

@@ -460,6 +460,23 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
             return JSONResponse({"ok": False, "error": "Tenant não encontrado"}, status_code=404)
         return {"ok": True, "data": {"name": ctx.name, "slug": ctx.slug}}
 
+    @app.get("/statics/{file_path:path}")
+    async def tenant_statics(file_path: str):
+        """Serve tenant-specific static files (avatars, media, senditems) in SaaS mode."""
+        from server.tenant import current_tenant_slug
+        slug = current_tenant_slug.get()
+        ctx = registry.get_by_slug(slug)
+        if not ctx:
+            return JSONResponse({"ok": False, "error": "Tenant não encontrado"}, status_code=404)
+
+        statics_root = (ctx.data_dir / "statics").resolve()
+        target = (statics_root / file_path).resolve()
+        if not str(target).startswith(str(statics_root)):
+            return JSONResponse({"ok": False, "error": "Caminho inválido"}, status_code=400)
+        if not target.is_file():
+            return JSONResponse({"ok": False, "error": "Arquivo não encontrado"}, status_code=404)
+        return FileResponse(str(target))
+
     # ── Frontend routes ────────────────────────────────────────────────
 
     @app.get("/")

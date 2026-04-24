@@ -64,6 +64,7 @@ class GOWAManager:
         cmd.extend(["--os", "Techify - WhatsBot"])
 
         logger.info("Starting GOWA: %s", " ".join(cmd))
+        logger.info("GOWA working directory: %s", self.data_dir)
         creation_flags = 0
         if sys.platform == "win32":
             creation_flags = subprocess.CREATE_NO_WINDOW
@@ -72,6 +73,7 @@ class GOWAManager:
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            cwd=str(self.data_dir),
             creationflags=creation_flags,
         )
         self._running = True
