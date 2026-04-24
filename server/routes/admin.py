@@ -4,6 +4,8 @@ import logging
 import time
 import hmac
 import asyncio
+import urllib.request
+import json
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -476,6 +478,7 @@ def register_routes(app, registry):
         tenant = tenant_repo.get_by_slug(slug)
         if not tenant:
             return _err("Empresa não encontrada.", status=404)
+        master_billing_repo.ensure_next_three_open_invoices(slug)
         profile = master_billing_repo.get_profile(slug)
         invoices = master_billing_repo.list_invoices(slug)
         financial = master_billing_repo.get_financial_summary(slug)
@@ -502,7 +505,38 @@ def register_routes(app, registry):
         payload["period_ym"] = period_ym
         try:
             invoice = master_billing_repo.upsert_invoice(slug, payload)
+            master_billing_repo.ensure_next_three_open_invoices(slug)
         except ValueError as exc:
             return _err(str(exc), status=400)
         summary = master_billing_repo.get_financial_summary(slug)
         return _ok({"invoice": invoice, "financial": summary})
+
+    @app.get("/api/admin/tenants/{slug}/invoices/ensure")
+    async def ensure_tenant_invoices(request: Request, slug: str):
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        if not tenant_repo.get_by_slug(slug):
+            return _err("Empresa não encontrada.", status=404)
+        master_billing_repo.ensure_next_three_open_invoices(slug)
+        return _ok({"invoices": master_billing_repo.list_invoices(slug)})
+
+    @app.get("/api/admin/models")
+    async def admin_models(request: Request):
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        try:
+            req = urllib.request.Request(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Accept": "application/json", "User-Agent": "WhatsBot-Superadmin"},
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw = json.loads(resp.read().decode("utf-8"))
+            items = []
+            for m in raw.get("data", []):
+                items.append({"id": m.get("id", ""), "name": m.get("name", "")})
+            items.sort(key=lambda x: (x["name"] or "").lower())
+            return _ok(items)
+        except Exception as exc:
+            return _err(f"Erro ao buscar modelos: {exc}", status=502)

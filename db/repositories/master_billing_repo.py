@@ -1,7 +1,7 @@
 """Master DB repository for tenant company profile and manual billing."""
 
-import json
 import time
+from datetime import datetime
 
 from db.master_connection import get_master_db
 
@@ -95,6 +95,27 @@ def list_invoices(tenant_slug: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _period_to_date(period_ym: str) -> datetime:
+    return datetime.strptime(f"{period_ym}-01", "%Y-%m-%d")
+
+
+def _next_period(period_ym: str) -> str:
+    d = _period_to_date(period_ym)
+    year = d.year + (1 if d.month == 12 else 0)
+    month = 1 if d.month == 12 else d.month + 1
+    return f"{year:04d}-{month:02d}"
+
+
+def _period_from_ts(ts: float) -> str:
+    d = datetime.fromtimestamp(ts)
+    return f"{d.year:04d}-{d.month:02d}"
+
+
+def _due_ts_for_period(period_ym: str, due_day: int) -> float:
+    due_day = min(max(int(due_day or 10), 1), 28)
+    return datetime.strptime(f"{period_ym}-{due_day:02d}", "%Y-%m-%d").timestamp()
+
+
 def upsert_invoice(tenant_slug: str, data: dict) -> dict:
     conn = get_master_db()
     period_ym = str(data.get("period_ym", "")).strip()
@@ -128,6 +149,38 @@ def upsert_invoice(tenant_slug: str, data: dict) -> dict:
         (tenant_slug, period_ym),
     ).fetchone()
     return dict(row) if row else {}
+
+
+def ensure_next_three_open_invoices(tenant_slug: str) -> None:
+    """Keep at least 3 future/open invoices (rolling window)."""
+    profile = get_profile(tenant_slug)
+    due_day = int(profile.get("due_day") or 10)
+    default_amount = float(profile.get("plan_amount") or 0.0)
+    now_period = _period_from_ts(time.time())
+
+    invoices = list_invoices(tenant_slug)
+    open_periods = sorted(
+        [i["period_ym"] for i in invoices if not i.get("paid") and i.get("period_ym", "") >= now_period]
+    )
+
+    if open_periods:
+        next_period = _next_period(open_periods[-1])
+    else:
+        next_period = now_period
+
+    while len(open_periods) < 3:
+        upsert_invoice(
+            tenant_slug,
+            {
+                "period_ym": next_period,
+                "due_ts": _due_ts_for_period(next_period, due_day),
+                "amount": default_amount,
+                "paid": False,
+                "notes": "Fatura gerada automaticamente",
+            },
+        )
+        open_periods.append(next_period)
+        next_period = _next_period(next_period)
 
 
 def get_financial_summary(tenant_slug: str, now_ts: float | None = None) -> dict:

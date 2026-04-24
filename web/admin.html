@@ -71,8 +71,10 @@
       <div id="tenants" class="overflow-x-auto text-sm"></div>
     </section>
 
-    <section id="tenant-detail-section" class="bg-white rounded-xl shadow p-5 space-y-4 hidden">
-      <div class="flex items-center justify-between">
+    <section id="tenant-detail-section" class="fixed inset-0 bg-black/60 z-50 hidden">
+      <div class="w-full h-full p-4 md:p-6">
+      <div class="w-full h-full bg-white rounded-xl shadow-2xl p-5 space-y-4 overflow-auto">
+      <div class="flex items-center justify-between sticky top-0 bg-white py-1">
         <h2 id="tenant-detail-title" class="text-lg font-semibold">Painel do tenant</h2>
         <button id="tenant-detail-close" class="border px-3 py-1 rounded">Fechar</button>
       </div>
@@ -97,13 +99,13 @@
             <input id="tenant-max-executions" type="number" min="10" max="10000" class="w-full border rounded px-3 py-2 mt-1" />
           </label>
           <label class="text-sm">Modelo chat
-            <input id="tenant-model" type="text" class="w-full border rounded px-3 py-2 mt-1" />
+            <input id="tenant-model" list="openrouter-models" type="text" class="w-full border rounded px-3 py-2 mt-1" />
           </label>
           <label class="text-sm">Modelo áudio
-            <input id="tenant-audio-model" type="text" class="w-full border rounded px-3 py-2 mt-1" />
+            <input id="tenant-audio-model" list="openrouter-models" type="text" class="w-full border rounded px-3 py-2 mt-1" />
           </label>
           <label class="text-sm md:col-span-2">Modelo imagem
-            <input id="tenant-image-model" type="text" class="w-full border rounded px-3 py-2 mt-1" />
+            <input id="tenant-image-model" list="openrouter-models" type="text" class="w-full border rounded px-3 py-2 mt-1" />
           </label>
         </div>
         <label class="inline-flex items-center gap-2 text-sm">
@@ -163,7 +165,10 @@
           <div id="invoice-list" class="overflow-x-auto mt-3 text-sm"></div>
         </div>
       </div>
+      </div>
+      </div>
     </section>
+    <datalist id="openrouter-models"></datalist>
   </main>
 
   <script>
@@ -185,6 +190,7 @@
     const tabFrame = document.getElementById("tenant-tab-frame");
     const tabApi = document.getElementById("tenant-tab-api");
     const tabCompany = document.getElementById("tenant-tab-company");
+    const modelDatalist = document.getElementById("openrouter-models");
 
     let adminToken = localStorage.getItem("whatsbot_admin_token") || "";
     let currentTenantSlug = "";
@@ -316,6 +322,17 @@
       adminLatestVersion.textContent = data.latest_version || "...";
     }
 
+    async function loadModelSuggestions() {
+      try {
+        const models = await api("/api/admin/models");
+        modelDatalist.innerHTML = (models || []).slice(0, 500).map(m =>
+          `<option value="${(m.id || "").replace(/"/g, "&quot;")}">${m.name || m.id}</option>`
+        ).join("");
+      } catch (_) {
+        modelDatalist.innerHTML = "";
+      }
+    }
+
     async function getDelegatedUrl(slug, path) {
       const base = tenantLink(slug, path);
       if (!base) throw new Error("Host inválido.");
@@ -347,7 +364,10 @@
       if (["costs", "executions", "sandbox"].includes(firstTab)) {
         tenantFrame.src = await getDelegatedUrl(slug, `/${firstTab}`);
       }
-      if (firstTab === "api") await loadTenantApiSettings(slug);
+      if (firstTab === "api") {
+        await loadModelSuggestions();
+        await loadTenantApiSettings(slug);
+      }
       if (firstTab === "company") await loadTenantCompany(slug);
     }
 
@@ -368,6 +388,23 @@
       const month = String(d.getMonth() + 1).padStart(2, "0");
       const day = String(d.getDate()).padStart(2, "0");
       return `${d.getFullYear()}-${month}-${day}`;
+    }
+
+    function nextPeriod(periodYm) {
+      const [year, month] = String(periodYm || "").split("-").map(Number);
+      if (!year || !month) {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      }
+      const next = new Date(year, month, 1);
+      return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+    }
+
+    function dueDateForPeriod(periodYm, dueDay) {
+      const [year, month] = String(periodYm || "").split("-").map(Number);
+      const safeDay = Math.min(Math.max(parseInt(dueDay || 10, 10), 1), 28);
+      if (!year || !month) return "";
+      return `${year}-${String(month).padStart(2, "0")}-${String(safeDay).padStart(2, "0")}`;
     }
 
     function tsFromDateInput(v) {
@@ -403,7 +440,22 @@
       `;
     }
 
+    function prefillNextInvoice(profile = {}, invoices = []) {
+      const openPeriods = invoices
+        .filter(i => !i.paid)
+        .map(i => i.period_ym)
+        .sort();
+      const allPeriods = invoices.map(i => i.period_ym).sort();
+      const basePeriod = openPeriods.length ? openPeriods[openPeriods.length - 1] : allPeriods[allPeriods.length - 1];
+      const period = basePeriod ? nextPeriod(basePeriod) : nextPeriod("");
+      document.getElementById("invoice-period").value = period;
+      document.getElementById("invoice-due-date").value = dueDateForPeriod(period, profile.due_day || 10);
+      document.getElementById("invoice-amount").value = profile.plan_amount ?? 0;
+      document.getElementById("invoice-paid").checked = false;
+    }
+
     async function loadTenantCompany(slug) {
+      await api(`/api/admin/tenants/${encodeURIComponent(slug)}/invoices/ensure`);
       const data = await api(`/api/admin/tenants/${encodeURIComponent(slug)}/company`);
       const p = data.profile || {};
       document.getElementById("company-owner-name").value = p.owner_name || "";
@@ -415,6 +467,7 @@
       document.getElementById("company-contract-end").value = dateInputFromTs(p.contract_end_ts);
       document.getElementById("company-notes").value = p.notes || "";
       renderInvoiceList(data.invoices || []);
+      prefillNextInvoice(p, data.invoices || []);
     }
 
     document.getElementById("setup-form").addEventListener("submit", async (e) => {
@@ -531,6 +584,13 @@
       tenantFrame.src = "about:blank";
       currentTenantSlug = "";
     });
+    tenantDetailSection.addEventListener("click", (e) => {
+      if (e.target === tenantDetailSection) {
+        tenantDetailSection.classList.add("hidden");
+        tenantFrame.src = "about:blank";
+        currentTenantSlug = "";
+      }
+    });
 
     document.querySelectorAll(".tenant-tab").forEach(btn => {
       btn.addEventListener("click", async () => {
@@ -541,6 +601,7 @@
           if (["costs", "executions", "sandbox"].includes(tab)) {
             tenantFrame.src = await getDelegatedUrl(currentTenantSlug, `/${tab}`);
           } else if (tab === "api") {
+            await loadModelSuggestions();
             await loadTenantApiSettings(currentTenantSlug);
           } else if (tab === "company") {
             await loadTenantCompany(currentTenantSlug);
