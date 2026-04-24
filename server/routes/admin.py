@@ -141,6 +141,7 @@ def register_routes(app, registry):
             t["whatsapp_connected"] = ctx.state.connected if ctx else False
             t["msg_count"] = ctx.state.msg_count if ctx else 0
             t["financial"] = master_billing_repo.get_financial_summary(t["slug"])
+            t["crm_enabled"] = bool(master_policy_repo.get_tenant(t["slug"], "crm_enabled", True))
             result.append(t)
         return _ok(result)
 

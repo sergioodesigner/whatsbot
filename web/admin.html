@@ -283,6 +283,7 @@
             <th class="py-2 pr-3">WhatsApp</th>
             <th class="py-2 pr-3">Mensagens</th>
             <th class="py-2 pr-3">Financeiro</th>
+            <th class="py-2 pr-3">CRM</th>
             <th class="py-2 pr-3">Ações</th>
           </tr></thead>
           <tbody>
@@ -294,6 +295,12 @@
                 <td class="py-2 pr-3">${t.whatsapp_connected ? "Sim" : "Não"}</td>
                 <td class="py-2 pr-3">${t.msg_count}</td>
                 <td class="py-2 pr-3">${financialBadge(t.financial)}</td>
+                <td class="py-2 pr-3">
+                  <label class="inline-flex items-center gap-2">
+                    <input type="checkbox" data-crm-tenant="${t.slug}" ${t.crm_enabled !== false ? "checked" : ""} />
+                    <span class="text-xs">${t.crm_enabled !== false ? "Ativo" : "Desativado"}</span>
+                  </label>
+                </td>
                 <td class="py-2 pr-3"><button class="text-blue-700 hover:underline" data-open-tenant="${t.slug}">Abrir painel</button></td>
               </tr>
             `).join("")}
@@ -590,6 +597,23 @@
         await openTenantDetail(btn.dataset.openTenant, "costs");
       } catch (err) {
         setStatus(`Erro ao abrir painel do tenant: ${err.message}`, true);
+      }
+    });
+
+    tenantsEl.addEventListener("change", async (e) => {
+      const input = e.target.closest("[data-crm-tenant]");
+      if (!input) return;
+      const slug = input.dataset.crmTenant;
+      try {
+        await api(`/api/admin/tenants/${encodeURIComponent(slug)}/api-settings`, {
+          method: "PUT",
+          body: JSON.stringify({ crm_enabled: input.checked }),
+        });
+        await loadTenants();
+        setStatus(`CRM ${input.checked ? "ativado" : "desativado"} para ${slug}.`);
+      } catch (err) {
+        input.checked = !input.checked;
+        setStatus(`Erro ao alterar CRM de ${slug}: ${err.message}`, true);
       }
     });
 
