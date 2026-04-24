@@ -477,11 +477,13 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
             admin_file = web_dir / "admin.html"
             if admin_file.exists():
                 return FileResponse(str(admin_file))
-            # Fallback to regular index if admin.html doesn't exist yet
-            index_file = web_dir / "index.html"
-            if index_file.exists():
-                return FileResponse(str(index_file))
-            return JSONResponse({"error": "Admin frontend not found"}, status_code=404)
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "Frontend admin não encontrado. Verifique web/admin.html no deploy.",
+                },
+                status_code=500,
+            )
 
         # Regular tenant gets the standard panel
         index_file = web_dir / "index.html"

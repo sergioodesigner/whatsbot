@@ -29,9 +29,12 @@ def create_tenant_middleware(registry, base_domain: str):
 
     async def tenant_middleware(request: Request, call_next):
         host = request.headers.get("host", "").split(":")[0].lower()  # strip port
+        # Reset context at the start of each request to avoid accidental leaks.
+        current_tenant_slug.set("default")
+        current_tenant_db.set("default")
 
         # ── Superadmin panel ──────────────────────────────────────
-        if host == f"admin.{base_domain}" or host == "admin":
+        if host == f"admin.{base_domain}" or host == "admin" or host.startswith("admin."):
             current_tenant_slug.set("__superadmin__")
             return await call_next(request)
 
