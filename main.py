@@ -153,6 +153,10 @@ def _main_saas(data_dir: Path):
         else:
             init_master_pg(_pg_url)
             logger.info("Master database ready (Supabase Postgres).")
+            
+            # Phase 3: CRM/Automations schema (runs only if CRM_AUTOMATION_BACKEND=supabase)
+            from db.tenant_pg_connection import init_tenant_pg_schema
+            init_tenant_pg_schema()
 
     if _master_backend != "supabase":
         from db.master_connection import init_master_db

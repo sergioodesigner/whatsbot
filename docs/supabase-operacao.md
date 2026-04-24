@@ -118,14 +118,31 @@ Os dados escritos no Supabase ficam preservados para auditoria.
 
 ---
 
-## Fases 3 e 4 — CRM/Automações e Core Conversacional
+## Fase 3 — CRM e Automações
 
-> **Ainda não implementadas no código.**  
-> Implementar apenas quando Fases 1 e 2 estiverem estáveis por ≥ 7 dias.
+### Ativação
 
-Flags reservadas:
-- `CRM_AUTOMATION_BACKEND=sqlite|supabase`
-- `CORE_DB_BACKEND=sqlite|supabase`
+```bash
+# As tabelas serão criadas na primeira subida se MASTER_DB_BACKEND já for supabase
+CRM_AUTOMATION_BACKEND=supabase
+```
+
+Os dados locais não migram automaticamente. As tabelas em Postgres exigirão
+a recriação das regras de automação (pode ser via painel).
+
+### Rollback
+
+```bash
+CRM_AUTOMATION_BACKEND=sqlite
+```
+Os dados no Postgres permanecem salvos, e o sistema volta a usar as tabelas antigas de cada tenant localmente (`whatsbot.db`).
+
+---
+
+## Fase 4 — Core Conversacional
+
+> **Ainda não implementada no código.**  
+> Ficará sob a flag `CORE_DB_BACKEND=sqlite|supabase`.
 
 ---
 
