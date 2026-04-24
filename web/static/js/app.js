@@ -31,15 +31,28 @@ function contactIdFromPath() {
 function bootstrapSuperadminDelegation() {
   const params = new URLSearchParams(window.location.search);
   const delegatedToken = (params.get('sa_token') || '').trim();
-  if (!delegatedToken) return;
-  localStorage.setItem('whatsbot_superadmin_token', delegatedToken);
-  params.delete('sa_token');
+  if (delegatedToken) {
+    sessionStorage.setItem('whatsbot_superadmin_token', delegatedToken);
+    localStorage.removeItem('whatsbot_superadmin_token');
+    params.delete('sa_token');
+  }
   const qs = params.toString();
   const cleanUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash || ''}`;
-  window.history.replaceState(null, '', cleanUrl);
+  if (delegatedToken) {
+    window.history.replaceState(null, '', cleanUrl);
+  }
 }
 
 bootstrapSuperadminDelegation();
+
+function isDelegatedSuperadminAccess() {
+  return !!(sessionStorage.getItem('whatsbot_superadmin_token') || localStorage.getItem('whatsbot_superadmin_token'));
+}
+
+function isEmbedMode() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('sa_embed') === '1';
+}
 
 function GearMenu({ tab, onTabChange, hasPassword, onLogout }) {
   const [open, setOpen] = useState(false);
@@ -88,17 +101,19 @@ function GearMenu({ tab, onTabChange, hasPassword, onLogout }) {
   `;
 }
 
-function PageHeader({ title, onBack }) {
+function PageHeader({ title, onBack, hideBack = false }) {
   return html`
     <div class="flex items-center gap-3 mb-4">
-      <button
-        onClick=${onBack}
-        class="w-[36px] h-[36px] flex items-center justify-center rounded-full hover:bg-wa-hover transition-colors"
-      >
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="#54656f">
-          <path d="M12 4l1.4 1.4L7.8 11H20v2H7.8l5.6 5.6L12 20l-8-8 8-8z"/>
-        </svg>
-      </button>
+      ${hideBack ? null : html`
+        <button
+          onClick=${onBack}
+          class="w-[36px] h-[36px] flex items-center justify-center rounded-full hover:bg-wa-hover transition-colors"
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="#54656f">
+            <path d="M12 4l1.4 1.4L7.8 11H20v2H7.8l5.6 5.6L12 20l-8-8 8-8z"/>
+          </svg>
+        </button>
+      `}
       <h1 class="text-[20px] font-medium text-wa-text">${title}</h1>
     </div>
   `;
@@ -120,12 +135,21 @@ function App({ onLogout, hasPassword }) {
   const [messagesRead, setMessagesRead] = useState(null);
   const [messageStatus, setMessageStatus] = useState(null);
   const [initialContactId, setInitialContactId] = useState(contactIdFromPath);
+  const delegatedAccess = isDelegatedSuperadminAccess();
+  const embeddedView = isEmbedMode();
 
   const setTab = useCallback((t) => {
     setTabState(t);
     const path = TAB_PATHS[t] || '/';
     if (window.location.pathname !== path) history.pushState(null, '', path);
   }, []);
+
+  useEffect(() => {
+    if (delegatedAccess && (tab === 'contacts' || tab === 'dashboard')) {
+      setTabState('costs');
+      if (window.location.pathname !== '/costs') history.replaceState(null, '', '/costs');
+    }
+  }, [delegatedAccess, tab]);
 
   useEffect(() => {
     function onPopState() {
@@ -186,12 +210,12 @@ function App({ onLogout, hasPassword }) {
 
   return html`
     <div class="h-screen flex flex-col relative">
-      <${GearMenu} tab=${tab} onTabChange=${setTab} hasPassword=${hasPassword} onLogout=${onLogout} />
+      ${delegatedAccess ? null : html`<${GearMenu} tab=${tab} onTabChange=${setTab} hasPassword=${hasPassword} onLogout=${onLogout} />`}
 
       <main class="flex-1 overflow-auto ${tab !== 'contacts' ? 'bg-wa-panel' : ''}">
         ${tab === 'dashboard'
           ? html`<div class="max-w-5xl mx-auto p-4">
-              <${PageHeader} title="Painel" onBack=${() => setTab('contacts')} />
+              <${PageHeader} title="Painel" onBack=${() => setTab('contacts')} hideBack=${embeddedView || delegatedAccess} />
               <${Dashboard}
                 status=${status}
                 qrAvailable=${qrAvailable}
@@ -202,20 +226,20 @@ function App({ onLogout, hasPassword }) {
                 onNotify=${handleNotify}
               />
             </div>`
-          : tab === 'contacts'
+          : tab === 'contacts' && !delegatedAccess
             ? html`<${Contacts} newMessage=${newMessage} chatPresence=${chatPresence} contactInfoUpdated=${contactInfoUpdated} tagsChanged=${tagsChanged} contactTagsUpdated=${contactTagsUpdated} contactAiToggled=${contactAiToggled} messagesRead=${messagesRead} messageStatus=${messageStatus} initialContactId=${initialContactId} wsConnected=${wsConnected} config=${config} onConfigSave=${save} />`
             : tab === 'costs'
               ? html`<div class="max-w-5xl mx-auto p-4">
-                  <${PageHeader} title="Custos de IA" onBack=${() => setTab('contacts')} />
+                  <${PageHeader} title="Custos de IA" onBack=${() => setTab('contacts')} hideBack=${embeddedView || delegatedAccess} />
                   <${CostsDashboard} />
                 </div>`
               : tab === 'executions'
                 ? html`<div class="max-w-5xl mx-auto p-4 h-full">
-                    <${PageHeader} title="Execuções" onBack=${() => setTab('contacts')} />
+                    <${PageHeader} title="Execuções" onBack=${() => setTab('contacts')} hideBack=${embeddedView || delegatedAccess} />
                     <${Executions} />
                   </div>`
                 : html`<div class="max-w-5xl mx-auto p-4">
-                    <${PageHeader} title="Sandbox" onBack=${() => setTab('contacts')} />
+                    <${PageHeader} title="Sandbox" onBack=${() => setTab('contacts')} hideBack=${embeddedView || delegatedAccess} />
                     <${Sandbox} />
                   </div>`
         }
@@ -230,6 +254,11 @@ function AuthGate() {
 
   useEffect(() => {
     checkAuth().then(res => {
+      if (isDelegatedSuperadminAccess()) {
+        setHasPassword(false);
+        setAuthState('ready');
+        return;
+      }
       if (res.ok) {
         setHasPassword(res.data.has_password);
         setAuthState('ready');
@@ -258,6 +287,7 @@ function AuthGate() {
 
   function handleLogout() {
     localStorage.removeItem('whatsbot_token');
+    sessionStorage.removeItem('whatsbot_superadmin_token');
     localStorage.removeItem('whatsbot_superadmin_token');
     setAuthState('login');
   }

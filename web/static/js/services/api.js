@@ -9,7 +9,9 @@ function _getToken() {
 }
 
 function _getSuperadminToken() {
-  return localStorage.getItem('whatsbot_superadmin_token') || '';
+  return sessionStorage.getItem('whatsbot_superadmin_token')
+    || localStorage.getItem('whatsbot_superadmin_token')
+    || '';
 }
 
 function _authHeaders(headers = {}) {

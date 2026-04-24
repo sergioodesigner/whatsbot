@@ -8,7 +8,12 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from db.repositories import tenant_repo
-from server.auth import generate_salt, hash_password, generate_token
+from server.auth import (
+    generate_salt,
+    hash_password,
+    generate_token,
+    generate_superadmin_delegate_token,
+)
 from server.helpers import _ok, _err
 from server.tenant import current_tenant_slug
 
@@ -236,6 +241,52 @@ def register_routes(app, registry):
         tenant_repo.delete(slug)
         logger.info("Tenant deleted via admin: %s", slug)
         return _ok({"message": f"Empresa '{slug}' removida."})
+
+    @app.post("/api/admin/tenants/{slug}/delegate-token")
+    async def tenant_delegate_token(request: Request, slug: str, body: dict | None = None):
+        """Issue a short-lived delegated token for superadmin access in one tenant."""
+        guard = _check_admin(request)
+        if guard:
+            return guard
+
+        tenant = tenant_repo.get_by_slug(slug)
+        if not tenant:
+            return _err("Empresa não encontrada.", status=404)
+
+        ttl_seconds = 600
+        if body and body.get("ttl_seconds") is not None:
+            try:
+                ttl_seconds = int(body.get("ttl_seconds"))
+            except (TypeError, ValueError):
+                ttl_seconds = 600
+        ttl_seconds = max(60, min(1800, ttl_seconds))
+
+        auth_header = request.headers.get("authorization", "")
+        token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else ""
+        if not token:
+            return _err("Não autenticado.", status=401)
+
+        for admin_user in tenant_repo.list_superadmins():
+            expected = generate_token(
+                admin_user.get("password_hash", ""),
+                admin_user.get("salt", ""),
+            )
+            if expected and hmac.compare_digest(token, expected):
+                delegated = generate_superadmin_delegate_token(
+                    admin_user.get("password_hash", ""),
+                    admin_user.get("salt", ""),
+                    slug,
+                    ttl_seconds=ttl_seconds,
+                )
+                return _ok(
+                    {
+                        "token": delegated,
+                        "tenant_slug": slug,
+                        "expires_in": ttl_seconds,
+                    }
+                )
+
+        return _err("Não autenticado.", status=401)
 
     # ── Dashboard / Metrics ───────────────────────────────────────────
 

@@ -17,7 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from server.auth import auth_required, verify_token
+from server.auth import auth_required, verify_token, verify_superadmin_delegate_token
 from server.helpers import _get_web_dir
 from server.state import MemoryLogHandler, ConnectionManager, AppState
 from server.background import start_gowa_task, status_poll_loop, qr_poll_loop, avatar_fetch_task
@@ -398,6 +398,8 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
     _SPA_PATHS = {"/", "/dashboard", "/sandbox", "/costs", "/executions"}
     _SUPERADMIN_ONLY_SPA_PATHS = {"/sandbox", "/costs", "/executions"}
     _SUPERADMIN_ONLY_API_PREFIXES = ("/api/sandbox", "/api/usage", "/api/executions")
+    _DELEGATED_ALLOWED_SPA_PATHS = {"/sandbox", "/costs", "/executions"}
+    _DELEGATED_ALLOWED_API_PREFIXES = ("/api/sandbox", "/api/usage", "/api/executions", "/api/status", "/api/tenant/info")
 
     def _extract_superadmin_token(request: Request) -> str:
         token = (request.headers.get("x-superadmin-token", "") or "").strip()
@@ -414,11 +416,25 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
         token = _extract_superadmin_token(request)
         if not token:
             return False
+        from server.tenant import current_tenant_slug
+        slug = current_tenant_slug.get()
+        if not slug or slug in ("default", "__superadmin__"):
+            return False
         for admin_user in tenant_repo.list_superadmins():
-            expected = generate_token(
-                admin_user.get("password_hash", ""),
-                admin_user.get("salt", ""),
-            )
+            pwd_hash = admin_user.get("password_hash", "")
+            salt = admin_user.get("salt", "")
+
+            # New delegated token format (short-lived and tenant-bound)
+            if verify_superadmin_delegate_token(
+                token,
+                password_hash=pwd_hash,
+                salt=salt,
+                tenant_slug=slug,
+            ):
+                return True
+
+            # Backward-compatible fallback (legacy superadmin session token)
+            expected = generate_token(pwd_hash, salt)
             if expected and hmac.compare_digest(token, expected):
                 return True
         return False
@@ -427,6 +443,7 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
     async def auth_middleware(request: Request, call_next):
         path = request.url.path
         from server.tenant import current_tenant_slug
+        token_candidate = _extract_superadmin_token(request)
 
         # On admin subdomain, only admin APIs are valid.
         # This prevents tenant route handlers from raising RuntimeError
@@ -450,6 +467,17 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
             if not _has_valid_superadmin_token(request):
                 return JSONResponse(
                     {"ok": False, "error": "Acesso restrito ao Superadmin."},
+                    status_code=403,
+                )
+            superadmin_delegated = True
+
+        # If a delegated token is being used, lock navigation to delegated-safe paths.
+        if token_candidate and _has_valid_superadmin_token(request):
+            delegated_spa = path in _DELEGATED_ALLOWED_SPA_PATHS
+            delegated_api = any(path.startswith(prefix) for prefix in _DELEGATED_ALLOWED_API_PREFIXES)
+            if not delegated_spa and not delegated_api:
+                return JSONResponse(
+                    {"ok": False, "error": "Acesso delegado permite apenas Custos, Execuções e Sandbox."},
                     status_code=403,
                 )
             superadmin_delegated = True

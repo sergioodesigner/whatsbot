@@ -58,6 +58,17 @@
       </div>
     </section>
   </main>
+  <div id="tenant-modal" class="fixed inset-0 bg-black/60 z-50 hidden">
+    <div class="w-full h-full p-4 md:p-6">
+      <div class="w-full h-full bg-white rounded-xl overflow-hidden shadow-2xl flex flex-col">
+        <div class="px-4 py-3 border-b flex items-center justify-between">
+          <h3 id="tenant-modal-title" class="text-sm font-semibold text-slate-800">Visualização da empresa</h3>
+          <button id="tenant-modal-close" type="button" class="px-3 py-1.5 border rounded text-sm hover:bg-slate-50">Fechar</button>
+        </div>
+        <iframe id="tenant-modal-frame" class="w-full flex-1 border-0" referrerpolicy="no-referrer"></iframe>
+      </div>
+    </div>
+  </div>
 
   <script>
     const statusEl = document.getElementById("status");
@@ -66,6 +77,10 @@
     const loginSection = document.getElementById("login-section");
     const tenantCreateSection = document.getElementById("tenant-create-section");
     const tenantsSection = document.getElementById("tenants-section");
+    const tenantModal = document.getElementById("tenant-modal");
+    const tenantModalTitle = document.getElementById("tenant-modal-title");
+    const tenantModalFrame = document.getElementById("tenant-modal-frame");
+    const tenantModalClose = document.getElementById("tenant-modal-close");
     let adminToken = localStorage.getItem("whatsbot_admin_token") || "";
 
     function setStatus(message, isError = false) {
@@ -80,8 +95,39 @@
       if (parts.length < 2) return null;
       const baseDomain = parts.slice(1).join(".");
       const protocol = window.location.protocol || "https:";
-      const tokenQuery = adminToken ? `?sa_token=${encodeURIComponent(adminToken)}` : "";
-      return `${protocol}//${slug}.${baseDomain}${path}${tokenQuery}`;
+      return `${protocol}//${slug}.${baseDomain}${path}`;
+    }
+
+    function openModal(title, url) {
+      tenantModalTitle.textContent = title;
+      tenantModalFrame.src = url;
+      tenantModal.classList.remove("hidden");
+    }
+
+    function closeModal() {
+      tenantModal.classList.add("hidden");
+      tenantModalFrame.src = "about:blank";
+    }
+
+    async function openTenantView(slug, path, label) {
+      const baseUrl = tenantLink(slug, path);
+      if (!baseUrl) {
+        setStatus("Host inválido para abrir tenant.", true);
+        return;
+      }
+      try {
+        const delegated = await api(`/api/admin/tenants/${encodeURIComponent(slug)}/delegate-token`, {
+          method: "POST",
+          body: JSON.stringify({ ttl_seconds: 600 }),
+        });
+        const token = delegated.token || "";
+        if (!token) throw new Error("Token delegado não retornado.");
+        const separator = baseUrl.includes("?") ? "&" : "?";
+        const url = `${baseUrl}${separator}sa_token=${encodeURIComponent(token)}&sa_embed=1`;
+        openModal(`${slug} • ${label}`, url);
+      } catch (err) {
+        setStatus(`Falha ao abrir ${slug}: ${err.message}`, true);
+      }
     }
 
     async function api(path, options = {}) {
@@ -151,10 +197,9 @@
           const sandboxUrl = tenantLink(t.slug, "/sandbox");
           const links = [dashboardUrl, costsUrl, executionsUrl, sandboxUrl].every(Boolean)
             ? `
-              <a class="text-blue-700 hover:underline mr-3" href="${dashboardUrl}" target="_blank" rel="noopener noreferrer">Painel</a>
-              <a class="text-blue-700 hover:underline mr-3" href="${costsUrl}" target="_blank" rel="noopener noreferrer">Custos</a>
-              <a class="text-blue-700 hover:underline mr-3" href="${executionsUrl}" target="_blank" rel="noopener noreferrer">Execuções</a>
-              <a class="text-blue-700 hover:underline" href="${sandboxUrl}" target="_blank" rel="noopener noreferrer">Sandbox</a>
+              <button class="text-blue-700 hover:underline mr-3" data-open-tenant="${t.slug}" data-open-path="/costs" type="button">Custos</button>
+              <button class="text-blue-700 hover:underline mr-3" data-open-tenant="${t.slug}" data-open-path="/executions" type="button">Execuções</button>
+              <button class="text-blue-700 hover:underline" data-open-tenant="${t.slug}" data-open-path="/sandbox" type="button">Sandbox</button>
             `
             : '<span class="text-slate-400">Host inválido para links por subdomínio</span>';
 
@@ -255,6 +300,20 @@
     });
 
     document.getElementById("refresh-tenants").addEventListener("click", loadTenants);
+    tenantModalClose.addEventListener("click", closeModal);
+    tenantModal.addEventListener("click", (e) => {
+      if (e.target === tenantModal) closeModal();
+    });
+    tenantsEl.addEventListener("click", async (e) => {
+      const btn = e.target.closest("[data-open-tenant][data-open-path]");
+      if (!btn) return;
+      e.preventDefault();
+      const slug = btn.getAttribute("data-open-tenant");
+      const path = btn.getAttribute("data-open-path");
+      const label = (btn.textContent || "").trim() || "Visão";
+      if (!slug || !path) return;
+      await openTenantView(slug, path, label);
+    });
 
     loadSetupStatus();
   </script>
