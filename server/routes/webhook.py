@@ -58,7 +58,7 @@ def register_routes(app, deps):
     state = deps.state
     settings = deps.settings
 
-    def _sync_media_to_statics(media_path: str | None) -> str | None:
+    def _sync_media_to_statics(media_path: str | None, wait_for_file: bool = False) -> str | None:
         """Ensure incoming media files are accessible under /statics.
 
         GOWA may save downloads under data_dir/media while the web panel serves
@@ -68,6 +68,7 @@ def register_routes(app, deps):
         if not media_path:
             return None
 
+        raw_clean = str(media_path).strip().strip('"').strip("'").replace("\\", "/")
         normalized = _normalize_media_path(media_path)
         if not normalized:
             return None
@@ -78,18 +79,22 @@ def register_routes(app, deps):
 
         # Keep only filename inside statics/media to avoid unexpected nesting.
         filename = Path(normalized).name
+        raw_filename = Path(raw_clean).name if raw_clean else ""
+        candidate_names = [n for n in dict.fromkeys([filename, raw_filename]) if n]
         dest = statics_media_dir / filename
         if dest.exists():
             return f"statics/media/{filename}"
 
-        candidates = [
-            data_dir / normalized,
-            data_dir / normalized.replace("statics/", "", 1),
-            data_dir / "media" / filename,
-            data_dir / "storages" / "media" / filename,
-            data_dir / "storages" / "statics" / "media" / filename,
-            data_dir / "statics" / "media" / filename,
-        ]
+        candidates: list[Path] = []
+        for name in candidate_names:
+            candidates.extend([
+                data_dir / normalized,
+                data_dir / normalized.replace("statics/", "", 1),
+                data_dir / "media" / name,
+                data_dir / "storages" / "media" / name,
+                data_dir / "storages" / "statics" / "media" / name,
+                data_dir / "statics" / "media" / name,
+            ])
         for src in candidates:
             try:
                 if src.is_file():
@@ -97,6 +102,43 @@ def register_routes(app, deps):
                     return f"statics/media/{filename}"
             except Exception:
                 continue
+
+        # Fallback: search recursively inside tenant data dir (and storages).
+        search_roots = [data_dir, data_dir / "storages"]
+        for root in search_roots:
+            try:
+                if not root.exists():
+                    continue
+                for name in candidate_names:
+                    for found in root.rglob(name):
+                        if found.is_file():
+                            shutil.copy2(found, dest)
+                            logger.info("[Webhook] Media synced from recursive exact match: %s", found)
+                            return f"statics/media/{filename}"
+
+                # Some GOWA builds may append codec suffixes to the saved filename.
+                # Search by stable prefix and copy to a clean target filename.
+                prefix = Path(filename).stem
+                for found in root.rglob(f"{prefix}*"):
+                    if found.is_file():
+                        shutil.copy2(found, dest)
+                        logger.info("[Webhook] Media synced from recursive prefix match: %s", found)
+                        return f"statics/media/{filename}"
+            except Exception:
+                continue
+
+        # Optional retry window for eventual consistency:
+        # GOWA may write media shortly after webhook delivery.
+        if wait_for_file:
+            for _ in range(6):  # up to ~3s
+                time.sleep(0.5)
+                for src in candidates:
+                    try:
+                        if src.is_file():
+                            shutil.copy2(src, dest)
+                            return f"statics/media/{filename}"
+                    except Exception:
+                        continue
 
         logger.warning(
             "[Webhook] Media file not found for sync. raw=%r normalized=%r tried=%s",
@@ -394,6 +436,13 @@ def register_routes(app, deps):
                 text = item.get("text", "")
                 image_path = item.get("image_path")
                 audio_path = item.get("audio_path")
+
+                # Re-resolve media paths right before processing to mitigate
+                # race conditions where GOWA writes files after webhook delivery.
+                if image_path:
+                    image_path = await asyncio.to_thread(_sync_media_to_statics, image_path, True)
+                if audio_path:
+                    audio_path = await asyncio.to_thread(_sync_media_to_statics, audio_path, True)
 
                 media_label = "image" if image_path else "audio"
                 logger.info("[Batch] Processing %s from %s", media_label, phone)

@@ -48,6 +48,7 @@ def register_routes(app, deps):
 
     def _repair_media_path(media_path: str | None) -> str | None:
         """Backfill old incoming media files into statics/media when possible."""
+        raw_clean = str(media_path or "").strip().strip('"').strip("'").replace("\\", "/")
         normalized = _normalize_media_path(media_path)
         if not normalized:
             return media_path
@@ -57,26 +58,50 @@ def register_routes(app, deps):
         statics_media_dir.mkdir(parents=True, exist_ok=True)
 
         filename = Path(normalized).name
+        raw_filename = Path(raw_clean).name if raw_clean else ""
+        candidate_names = [n for n in dict.fromkeys([filename, raw_filename]) if n]
         dest_rel = f"statics/media/{filename}"
         dest_abs = statics_media_dir / filename
         if dest_abs.exists():
             return dest_rel
 
-        candidates = [
-            data_dir / normalized,
-            data_dir / normalized.replace("statics/", "", 1),
-            data_dir / "media" / filename,
-            data_dir / "storages" / "media" / filename,
-            data_dir / "storages" / "statics" / "media" / filename,
-            data_dir / "statics" / "media" / filename,
-            data_dir / "statics" / "senditems" / filename,
-        ]
+        candidates: list[Path] = []
+        for name in candidate_names:
+            candidates.extend([
+                data_dir / normalized,
+                data_dir / normalized.replace("statics/", "", 1),
+                data_dir / "media" / name,
+                data_dir / "storages" / "media" / name,
+                data_dir / "storages" / "statics" / "media" / name,
+                data_dir / "statics" / "media" / name,
+                data_dir / "statics" / "senditems" / name,
+            ])
 
         for src in candidates:
             try:
                 if src.is_file():
                     shutil.copy2(src, dest_abs)
                     return dest_rel
+            except Exception:
+                continue
+
+        # Deep fallback for historical records: scan tenant folders recursively.
+        for root in (data_dir, data_dir / "storages"):
+            try:
+                if not root.exists():
+                    continue
+                for name in candidate_names:
+                    for found in root.rglob(name):
+                        if found.is_file():
+                            shutil.copy2(found, dest_abs)
+                            logger.info("[Contacts] Legacy media repaired from recursive exact match: %s", found)
+                            return dest_rel
+                prefix = Path(filename).stem
+                for found in root.rglob(f"{prefix}*"):
+                    if found.is_file():
+                        shutil.copy2(found, dest_abs)
+                        logger.info("[Contacts] Legacy media repaired from recursive prefix match: %s", found)
+                        return dest_rel
             except Exception:
                 continue
 
