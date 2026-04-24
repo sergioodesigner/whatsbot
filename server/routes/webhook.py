@@ -86,6 +86,8 @@ def register_routes(app, deps):
             data_dir / normalized,
             data_dir / normalized.replace("statics/", "", 1),
             data_dir / "media" / filename,
+            data_dir / "storages" / "media" / filename,
+            data_dir / "storages" / "statics" / "media" / filename,
             data_dir / "statics" / "media" / filename,
         ]
         for src in candidates:
@@ -96,6 +98,10 @@ def register_routes(app, deps):
             except Exception:
                 continue
 
+        logger.warning(
+            "[Webhook] Media file not found for sync. raw=%r normalized=%r tried=%s",
+            media_path, normalized, [str(p) for p in candidates]
+        )
         return normalized
 
     # ── Group Mention Helpers ──────────────────────────────────────
