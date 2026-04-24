@@ -83,7 +83,132 @@ CREATE TABLE IF NOT EXISTS automation_runs (
     ts           DOUBLE PRECISION NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_automation_runs_tenant ON automation_runs(tenant_slug);
+
+-- Phase 4: Core Conversational Tables
+
+CREATE TABLE IF NOT EXISTS config (
+    tenant_slug TEXT NOT NULL,
+    key   TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (tenant_slug, key)
+);
+
+CREATE TABLE IF NOT EXISTS contacts (
+    id              SERIAL PRIMARY KEY,
+    tenant_slug     TEXT    NOT NULL,
+    phone           TEXT    NOT NULL,
+    name            TEXT    NOT NULL DEFAULT '',
+    email           TEXT    NOT NULL DEFAULT '',
+    profession      TEXT    NOT NULL DEFAULT '',
+    company         TEXT    NOT NULL DEFAULT '',
+    address         TEXT    NOT NULL DEFAULT '',
+    ai_enabled      INTEGER NOT NULL DEFAULT 1,
+    is_group        INTEGER NOT NULL DEFAULT 0,
+    group_name      TEXT    NOT NULL DEFAULT '',
+    is_archived     INTEGER NOT NULL DEFAULT 0,
+    archived_by_app INTEGER NOT NULL DEFAULT 0,
+    can_send        INTEGER NOT NULL DEFAULT 1,
+    unread_count    INTEGER NOT NULL DEFAULT 0,
+    unread_ai_count INTEGER NOT NULL DEFAULT 0,
+    created_at      DOUBLE PRECISION NOT NULL,
+    updated_at      DOUBLE PRECISION NOT NULL,
+    UNIQUE(tenant_slug, phone)
+);
+CREATE INDEX IF NOT EXISTS idx_contacts_tenant_updated ON contacts(tenant_slug, updated_at);
+CREATE INDEX IF NOT EXISTS idx_contacts_tenant_archived ON contacts(tenant_slug, is_archived);
+
+CREATE TABLE IF NOT EXISTS observations (
+    id         SERIAL PRIMARY KEY,
+    tenant_slug TEXT NOT NULL,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    text       TEXT    NOT NULL,
+    created_at DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_obs_tenant_contact ON observations(tenant_slug, contact_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id         SERIAL PRIMARY KEY,
+    tenant_slug TEXT NOT NULL,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    role       TEXT    NOT NULL,
+    content    TEXT    NOT NULL DEFAULT '',
+    ts         DOUBLE PRECISION NOT NULL,
+    media_type TEXT,
+    media_path TEXT,
+    status     TEXT,
+    msg_id     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_msg_tenant_contact_ts ON messages(tenant_slug, contact_id, ts);
+CREATE INDEX IF NOT EXISTS idx_msg_tenant_id ON messages(tenant_slug, msg_id);
+
+CREATE TABLE IF NOT EXISTS usage (
+    id                SERIAL PRIMARY KEY,
+    tenant_slug       TEXT NOT NULL,
+    contact_id        INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    call_type         TEXT    NOT NULL,
+    model             TEXT    NOT NULL,
+    prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens      INTEGER NOT NULL DEFAULT 0,
+    cost_usd          DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    ts                DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_usage_tenant_contact_ts ON usage(tenant_slug, contact_id, ts);
+CREATE INDEX IF NOT EXISTS idx_usage_tenant_ts ON usage(tenant_slug, ts);
+
+CREATE TABLE IF NOT EXISTS tags (
+    id    SERIAL PRIMARY KEY,
+    tenant_slug TEXT NOT NULL,
+    name  TEXT    NOT NULL,
+    color TEXT    NOT NULL,
+    UNIQUE(tenant_slug, name)
+);
+
+CREATE TABLE IF NOT EXISTS contact_tags (
+    tenant_slug TEXT NOT NULL,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    tag_id     INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (tenant_slug, contact_id, tag_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ct_tenant_tag ON contact_tags(tenant_slug, tag_id);
+
+CREATE TABLE IF NOT EXISTS unread_msg_ids (
+    id         SERIAL PRIMARY KEY,
+    tenant_slug TEXT NOT NULL,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    msg_id     TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_unread_tenant_contact ON unread_msg_ids(tenant_slug, contact_id);
+
+CREATE TABLE IF NOT EXISTS executions (
+    id           SERIAL PRIMARY KEY,
+    tenant_slug  TEXT NOT NULL,
+    phone        TEXT    NOT NULL,
+    trigger_type TEXT    NOT NULL DEFAULT 'webhook',
+    status       TEXT    NOT NULL DEFAULT 'running',
+    started_at   DOUBLE PRECISION NOT NULL,
+    completed_at DOUBLE PRECISION,
+    error        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_exec_tenant_started ON executions(tenant_slug, started_at);
+
+CREATE TABLE IF NOT EXISTS execution_steps (
+    id           SERIAL PRIMARY KEY,
+    tenant_slug  TEXT NOT NULL,
+    execution_id INTEGER NOT NULL REFERENCES executions(id) ON DELETE CASCADE,
+    step_type    TEXT    NOT NULL,
+    status       TEXT    NOT NULL DEFAULT 'ok',
+    data         TEXT,
+    ts           DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_step_tenant_exec ON execution_steps(tenant_slug, execution_id);
 """
+
+def is_core_supabase_backend() -> bool:
+    """Return True when Phase 4 is active via Supabase Postgres."""
+    if os.environ.get("MASTER_DB_BACKEND", "sqlite").strip().lower() != "supabase":
+        return False
+    return os.environ.get("CORE_DB_BACKEND", "sqlite").strip().lower() == "supabase"
 
 def is_crm_supabase_backend() -> bool:
     """Return True when Phase 3 is active via Supabase Postgres."""
@@ -94,16 +219,16 @@ def is_crm_supabase_backend() -> bool:
 
 
 def init_tenant_pg_schema() -> None:
-    """Apply the tenant schema if Phase 3 is active.
+    """Apply the tenant schema if Phase 3 or Phase 4 is active.
     This runs on startup alongside Phase 2 initialization.
     """
-    if not is_crm_supabase_backend():
+    if not (is_crm_supabase_backend() or is_core_supabase_backend()):
         return
     with get_pg_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(_TENANT_SCHEMA_PG)
         conn.commit()
-    logger.info("Supabase tenant schema initialised (Phase 3 CRM/Automations).")
+    logger.info("Supabase tenant schema initialised (Phases 3/4).")
 
 
 # ── Tenant-scoped API ──────────────────────────────────────────────────

@@ -29,6 +29,12 @@ def _crm_backend() -> str:
         return "sqlite"
     return _os.environ.get("CRM_AUTOMATION_BACKEND", "sqlite").strip().lower()
 
+def _core_backend() -> str:
+    # Phase 4 requires Phase 2 to be active.
+    if _master_backend() != "supabase":
+        return "sqlite"
+    return _os.environ.get("CORE_DB_BACKEND", "sqlite").strip().lower()
+
 
 # ── Lazy module-level proxies ─────────────────────────────────────────
 # Each proxy module exposes the same public API as the SQLite version.
@@ -36,16 +42,19 @@ def _crm_backend() -> str:
 class _ModuleProxy:
     """Lazy proxy that selects the right module on first attribute access."""
 
-    def __init__(self, sqlite_mod: str, pg_mod: str, use_crm_backend: bool = False):
+    def __init__(self, sqlite_mod: str, pg_mod: str, use_crm_backend: bool = False, use_core_backend: bool = False):
         self._sqlite_mod = sqlite_mod
         self._pg_mod = pg_mod
         self._use_crm_backend = use_crm_backend
+        self._use_core_backend = use_core_backend
         self._resolved = None
 
     def _resolve(self):
         if self._resolved is None:
             import importlib
-            if self._use_crm_backend:
+            if self._use_core_backend:
+                mod_path = self._pg_mod if _core_backend() == "supabase" else self._sqlite_mod
+            elif self._use_crm_backend:
                 mod_path = self._pg_mod if _crm_backend() == "supabase" else self._sqlite_mod
             else:
                 mod_path = self._pg_mod if _master_backend() == "supabase" else self._sqlite_mod
@@ -83,4 +92,16 @@ automation_repo = _ModuleProxy(
     "db.repositories.automation_repo",
     "db.repositories.automation_repo_pg",
     use_crm_backend=True,
+)
+
+config_repo = _ModuleProxy(
+    "db.repositories.config_repo",
+    "db.repositories.config_repo_pg",
+    use_core_backend=True,
+)
+
+tag_repo = _ModuleProxy(
+    "db.repositories.tag_repo",
+    "db.repositories.tag_repo_pg",
+    use_core_backend=True,
 )
