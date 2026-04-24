@@ -5,8 +5,10 @@ import json
 import logging
 import random
 import re
+import shutil
 import time
 import uuid
+from pathlib import Path
 
 from gowa.client import GOWASendError, extract_msg_id
 
@@ -55,6 +57,46 @@ def register_routes(app, deps):
     ws_manager = deps.ws_manager
     state = deps.state
     settings = deps.settings
+
+    def _sync_media_to_statics(media_path: str | None) -> str | None:
+        """Ensure incoming media files are accessible under /statics.
+
+        GOWA may save downloads under data_dir/media while the web panel serves
+        files from data_dir/statics. This function mirrors files into
+        data_dir/statics/media and returns a stable relative path.
+        """
+        if not media_path:
+            return None
+
+        normalized = _normalize_media_path(media_path)
+        if not normalized:
+            return None
+
+        data_dir = Path(settings.data_dir)
+        statics_media_dir = data_dir / "statics" / "media"
+        statics_media_dir.mkdir(parents=True, exist_ok=True)
+
+        # Keep only filename inside statics/media to avoid unexpected nesting.
+        filename = Path(normalized).name
+        dest = statics_media_dir / filename
+        if dest.exists():
+            return f"statics/media/{filename}"
+
+        candidates = [
+            data_dir / normalized,
+            data_dir / normalized.replace("statics/", "", 1),
+            data_dir / "media" / filename,
+            data_dir / "statics" / "media" / filename,
+        ]
+        for src in candidates:
+            try:
+                if src.is_file():
+                    shutil.copy2(src, dest)
+                    return f"statics/media/{filename}"
+            except Exception:
+                continue
+
+        return normalized
 
     # ── Group Mention Helpers ──────────────────────────────────────
 
@@ -594,18 +636,18 @@ def register_routes(app, deps):
         raw_image = data.get("image")
         if raw_image:
             if isinstance(raw_image, str):
-                image_path = _normalize_media_path(raw_image)
+                image_path = _sync_media_to_statics(raw_image)
             elif isinstance(raw_image, dict):
-                image_path = _normalize_media_path(raw_image.get("path", ""))
+                image_path = _sync_media_to_statics(raw_image.get("path", ""))
                 if not text:
                     text = (raw_image.get("caption", "") or "").strip()
 
         raw_audio = data.get("audio")
         if raw_audio:
             if isinstance(raw_audio, str):
-                audio_path = _normalize_media_path(raw_audio)
+                audio_path = _sync_media_to_statics(raw_audio)
             elif isinstance(raw_audio, dict):
-                audio_path = _normalize_media_path(raw_audio.get("path", ""))
+                audio_path = _sync_media_to_statics(raw_audio.get("path", ""))
 
         # WhatsApp GIFs may arrive under "video" with gif flags/mime.
         raw_video = data.get("video")
@@ -636,9 +678,9 @@ def register_routes(app, deps):
         raw_vn = data.get("video_note")
         if raw_vn and not audio_path:
             if isinstance(raw_vn, str):
-                audio_path = _normalize_media_path(raw_vn)
+                audio_path = _sync_media_to_statics(raw_vn)
             elif isinstance(raw_vn, dict):
-                audio_path = _normalize_media_path(raw_vn.get("path", ""))
+                audio_path = _sync_media_to_statics(raw_vn.get("path", ""))
 
         # For audio without text, set a placeholder
         if audio_path and not text:

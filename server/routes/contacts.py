@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import shutil
 import time
 from pathlib import Path
 
@@ -22,6 +23,62 @@ def register_routes(app, deps):
     state = deps.state
     settings = deps.settings
     statics_senditems_dir = deps.statics_senditems_dir
+
+    def _normalize_media_path(path: str | None) -> str:
+        """Normalize legacy media paths into a stable relative path."""
+        if not path:
+            return ""
+        clean = str(path).strip().strip('"').strip("'").replace("\\", "/")
+        if ";" in clean:
+            clean = clean.split(";", 1)[0].strip()
+        if not clean:
+            return ""
+        if "/statics/" in clean:
+            clean = clean.split("/statics/", 1)[1]
+            return f"statics/{clean.lstrip('/')}"
+        if clean.startswith("/statics/"):
+            return clean.lstrip("/")
+        if clean.startswith("statics/"):
+            return clean
+        if clean.startswith("media/") or clean.startswith("senditems/"):
+            return f"statics/{clean}"
+        if "/" not in clean:
+            return f"statics/media/{clean}"
+        return clean.lstrip("/")
+
+    def _repair_media_path(media_path: str | None) -> str | None:
+        """Backfill old incoming media files into statics/media when possible."""
+        normalized = _normalize_media_path(media_path)
+        if not normalized:
+            return media_path
+
+        data_dir = Path(settings.data_dir)
+        statics_media_dir = data_dir / "statics" / "media"
+        statics_media_dir.mkdir(parents=True, exist_ok=True)
+
+        filename = Path(normalized).name
+        dest_rel = f"statics/media/{filename}"
+        dest_abs = statics_media_dir / filename
+        if dest_abs.exists():
+            return dest_rel
+
+        candidates = [
+            data_dir / normalized,
+            data_dir / normalized.replace("statics/", "", 1),
+            data_dir / "media" / filename,
+            data_dir / "statics" / "media" / filename,
+            data_dir / "statics" / "senditems" / filename,
+        ]
+
+        for src in candidates:
+            try:
+                if src.is_file():
+                    shutil.copy2(src, dest_abs)
+                    return dest_rel
+            except Exception:
+                continue
+
+        return normalized
 
     async def _send_read_receipts(phone: str, msg_ids: list[str]):
         """Send read receipts to GOWA in background (best-effort)."""
@@ -104,8 +161,14 @@ def register_routes(app, deps):
                 if phone in agent_handler._contacts:
                     agent_handler._contacts[phone].unread_count = 0
                     agent_handler._contacts[phone].unread_ai_count = 0
-            # Load messages
-            data["messages"] = message_repo.get_all(contact_id)
+            # Load messages and repair legacy media paths on-the-fly.
+            messages = message_repo.get_all(contact_id)
+            for m in messages:
+                if m.get("media_type") in ("audio", "image") and m.get("media_path"):
+                    repaired = _repair_media_path(m.get("media_path"))
+                    if repaired and repaired != m.get("media_path"):
+                        m["media_path"] = repaired
+            data["messages"] = messages
             # Load usage for the full response
             data["usage"] = []
             return data, msg_ids
