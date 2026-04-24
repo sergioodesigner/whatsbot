@@ -22,6 +22,16 @@ function formatPhoneDisplay(phone) {
   return `+${phone.slice(0, 2)} (${phone.slice(2, 4)}) ${phone.slice(4, 9)}-${phone.slice(9)}`;
 }
 
+function resolveContactDisplayName(contact) {
+  if (!contact) return '';
+  if (!contact.is_group) {
+    return ((contact.name || '').replace(/^~/, '') || contact.phone);
+  }
+  const groupName = (contact.group_name || contact.name || '').trim();
+  const isGeneric = !groupName || /^Group\s+\d+/i.test(groupName);
+  return isGeneric ? 'Grupo sem nome' : groupName;
+}
+
 // ── Contact List (WhatsApp Web sidebar) ──────────────────────────
 
 export function ContactList({ contacts, loading, search, onSearchChange, selected, onSelect, onContextMenu, typingState, showArchived, onToggleArchived, globalTags, onStartConversation, checkingPhone, checkPhoneError, wsConnected, autoReply, onToggleAutoReply }) {
@@ -129,7 +139,7 @@ export function ContactList({ contacts, loading, search, onSearchChange, selecte
                   <div class="flex-1 min-w-0 border-b border-wa-border py-[13px]">
                     <div class="flex justify-between items-baseline">
                       <span class="text-wa-text text-[17px] truncate leading-[21px]">
-                        ${c.is_group ? (c.group_name || c.name || c.phone) : ((c.name || '').replace(/^~/, '') || c.phone)}
+                        ${resolveContactDisplayName(c)}
                         ${!c.is_group && c.name && c.name.startsWith('~')
                           ? html`<span class="ml-[6px] text-[10px] font-semibold text-blue-400 bg-blue-500/15 rounded px-[5px] py-[1px] align-middle" title="Nome obtido do WhatsApp">WA</span>`
                           : null

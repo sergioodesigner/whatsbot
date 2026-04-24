@@ -8,6 +8,7 @@ import { formatWhatsApp } from '../../utils/formatWhatsApp.js';
 import { AudioPlayer } from './AudioPlayer.js';
 
 const html = htm.bind(h);
+const EMOJI_OPTIONS = ['😀', '😂', '😍', '🤔', '🙏', '👍', '👏', '🔥', '❤️', '🎉', '✅', '😅'];
 
 function normalizeMediaSrc(src, isLocalBlob) {
   if (!src) return '';
@@ -32,6 +33,13 @@ function normalizeMediaSrc(src, isLocalBlob) {
   return clean.startsWith('/') ? clean : `/${clean}`;
 }
 
+function parseGroupMessage(content) {
+  const text = String(content || '');
+  const m = text.match(/^\[([^\]]+)\]:\s*([\s\S]*)$/);
+  if (!m) return { sender: '', text };
+  return { sender: m[1].trim(), text: m[2] || '' };
+}
+
 // ── Contact Detail (WhatsApp Web chat panel) ─────────────────────
 
 export function ContactDetail({ phone, onBack, messages, info, contact, onAvatarClick, contactTyping, setContactData, globalTags }) {
@@ -39,6 +47,7 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordDuration, setRecordDuration] = useState(0);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   // pendingMedia: { type: 'image'|'audio', file, blob, filename, previewUrl }
   const [pendingMedia, setPendingMedia] = useState(null);
   const chatRef = useRef(null);
@@ -53,6 +62,7 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
   }, [messages]);
 
   useEffect(() => { setInput(''); }, [phone]);
+  useEffect(() => { setShowEmojiPicker(false); }, [phone]);
 
   // Auto-focus message input when opening a chat
   useEffect(() => {
@@ -116,6 +126,7 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
     sendPresence(phone, 'stop').catch(() => {});
 
     setInput('');
+    setShowEmojiPicker(false);
 
     // Add message optimistically
     const localId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -291,6 +302,12 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
     return `${m}:${s.toString().padStart(2, '0')}`;
   }
 
+  function appendEmoji(emoji) {
+    setInput(prev => `${prev}${emoji}`);
+    setShowEmojiPicker(false);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
   // Empty state — no contact selected
   if (!phone) {
     return html`
@@ -316,7 +333,11 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
   const canSend = contact ? (contact.can_send !== false) : true;
   const rawName = info && info.name;
   const isAutoName = !isGroup && rawName && rawName.startsWith('~');
-  const displayName = isGroup ? (contact.group_name || phone) : (rawName ? rawName.replace(/^~/, '') : phone);
+  const groupRawName = isGroup ? String((contact && contact.group_name) || '').trim() : '';
+  const groupNameIsGeneric = !groupRawName || /^Group\s+\d+/i.test(groupRawName);
+  const displayName = isGroup
+    ? (groupNameIsGeneric ? 'Grupo sem nome' : groupRawName)
+    : (rawName ? rawName.replace(/^~/, '') : phone);
   const hasText = input.trim().length > 0;
 
   return html`
@@ -364,6 +385,8 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
               const isToolCall = m.role === 'tool_call';
               const isError = m.role === 'error';
               const isFirst = i === 0 || messages[i - 1].role !== m.role;
+              const groupParsed = (isGroup && isUser) ? parseGroupMessage(m.content) : null;
+              const msgText = groupParsed ? groupParsed.text : (m.content || '');
 
               if (isTranscription) {
                 return html`
@@ -447,6 +470,11 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
                       ? `bg-wa-incoming text-wa-text ${isFirst ? 'msg-tail-in rounded-tl-none' : ''}`
                       : `${isFailed ? 'text-wa-text' : 'bg-wa-outgoing text-wa-text'} ${isFirst ? 'msg-tail-out rounded-tr-none' : ''}`
                   }" style="${isFailed ? 'background: #fce8e8;' : ''}">
+                    ${groupParsed && groupParsed.sender ? html`
+                      <div class="text-[12px] leading-[15px] font-semibold text-wa-teal mb-[2px]">
+                        ${groupParsed.sender}
+                      </div>
+                    ` : null}
                     ${m.media_type === 'image' ? html`
                       <img
                         src="${normalizeMediaSrc(m.media_path, m._isLocalBlob)}"
@@ -456,15 +484,15 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
                         onClick=${() => window.open(normalizeMediaSrc(m.media_path, m._isLocalBlob), '_blank')}
                         loading="lazy"
                       />
-                      ${m.content && m.content !== '[Imagem enviada pelo contato]' && !m.content.startsWith('[Descrição da imagem]')
-                        ? html`<span dangerouslySetInnerHTML=${{ __html: formatWhatsApp(m.content) }}></span>`
+                      ${msgText && msgText !== '[Imagem enviada pelo contato]' && !msgText.startsWith('[Descrição da imagem]')
+                        ? html`<span dangerouslySetInnerHTML=${{ __html: formatWhatsApp(msgText) }}></span>`
                         : null}
                     ` : m.media_type === 'audio' ? html`
                       <${AudioPlayer} src=${m.media_path} isLocalBlob=${m._isLocalBlob} />
-                      ${m.content && m.content !== '[Áudio recebido]' && m.content !== '[Áudio]' && !m.content.startsWith('[Transcrição do áudio]')
-                        ? html`<span class="block text-[12px] text-wa-secondary italic" dangerouslySetInnerHTML=${{ __html: formatWhatsApp(m.content) }}></span>`
+                      ${msgText && msgText !== '[Áudio recebido]' && msgText !== '[Áudio]' && !msgText.startsWith('[Transcrição do áudio]')
+                        ? html`<span class="block text-[12px] text-wa-secondary italic" dangerouslySetInnerHTML=${{ __html: formatWhatsApp(msgText) }}></span>`
                         : null}
-                    ` : html`<span dangerouslySetInnerHTML=${{ __html: formatWhatsApp(m.content) }}></span>`}
+                    ` : html`<span dangerouslySetInnerHTML=${{ __html: formatWhatsApp(msgText) }}></span>`}
                     <span class="float-right ml-[8px] mt-[4px] text-[11px] leading-[15px] whitespace-nowrap text-wa-secondary">
                       ${!isUser ? (() => {
                         if (isFailed) return html`<${FailedIcon} />${!m.media_type && m._localId ? html`<${RetryIcon} onClick=${() => handleRetry(m._localId, m.content)} />` : ''}`;
@@ -545,10 +573,22 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
           </button>
         </div>
       ` : html`
-        <form onSubmit=${handleSend} class="flex items-center px-[10px] py-[5px] bg-wa-panel min-h-[62px] shrink-0">
-          <button type="button" class="p-[8px] shrink-0" tabindex="-1">
+        <form onSubmit=${handleSend} class="relative flex items-center px-[10px] py-[5px] bg-wa-panel min-h-[62px] shrink-0">
+          <button type="button" class="p-[8px] shrink-0" tabindex="-1" onClick=${() => setShowEmojiPicker(v => !v)}>
             <${EmojiIcon} />
           </button>
+          ${showEmojiPicker ? html`
+            <div class="absolute bottom-[58px] left-[10px] z-20 bg-white border border-wa-border rounded-[10px] shadow-lg p-[8px] grid grid-cols-6 gap-[6px]">
+              ${EMOJI_OPTIONS.map(e => html`
+                <button
+                  key=${e}
+                  type="button"
+                  class="w-[30px] h-[30px] text-[18px] leading-none hover:bg-wa-hover rounded-[6px]"
+                  onClick=${() => appendEmoji(e)}
+                >${e}</button>
+              `)}
+            </div>
+          ` : ''}
           <button type="button" class="p-[8px] shrink-0" tabindex="-1" onClick=${handleAttachClick}>
             <${AttachIcon} />
           </button>

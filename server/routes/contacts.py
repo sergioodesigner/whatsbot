@@ -23,6 +23,8 @@ def register_routes(app, deps):
     state = deps.state
     settings = deps.settings
     statics_senditems_dir = deps.statics_senditems_dir
+    statics_media_dir = statics_senditems_dir.parent / "media"
+    statics_media_dir.mkdir(parents=True, exist_ok=True)
 
     def _normalize_media_path(path: str | None) -> str:
         """Normalize legacy media paths into a stable relative path."""
@@ -381,9 +383,16 @@ def register_routes(app, deps):
     ):
         """Send an image to a contact (operator-initiated)."""
         suffix = Path(image.filename or "img.png").suffix or ".png"
-        dest = statics_senditems_dir / f"{int(time.time() * 1000)}{suffix}"
+        media_name = f"{int(time.time() * 1000)}{suffix}"
+        dest = statics_senditems_dir / media_name
+        stable_dest = statics_media_dir / media_name
         content = await image.read()
         dest.write_bytes(content)
+        # Keep a stable chat copy under statics/media for history rendering.
+        try:
+            stable_dest.write_bytes(content)
+        except Exception as e:
+            logger.warning("[Send] Could not mirror image to statics/media (%s): %s", stable_dest, e)
 
         send_result = None
         try:
@@ -413,8 +422,8 @@ def register_routes(app, deps):
 
         msg_id = extract_msg_id(send_result)
 
-        # Relative path for storage and frontend
-        rel_path = f"statics/senditems/{dest.name}"
+        # Use stable media path in chat history to avoid broken previews on reload.
+        rel_path = f"statics/media/{media_name}"
         msg_data = {
             "role": "assistant",
             "content": caption,
@@ -439,9 +448,15 @@ def register_routes(app, deps):
     ):
         """Send an audio file to a contact (operator-initiated)."""
         suffix = Path(audio.filename or "voice.ogg").suffix or ".ogg"
-        dest = statics_senditems_dir / f"{int(time.time() * 1000)}{suffix}"
+        media_name = f"{int(time.time() * 1000)}{suffix}"
+        dest = statics_senditems_dir / media_name
+        stable_dest = statics_media_dir / media_name
         content = await audio.read()
         dest.write_bytes(content)
+        try:
+            stable_dest.write_bytes(content)
+        except Exception as e:
+            logger.warning("[Send] Could not mirror audio to statics/media (%s): %s", stable_dest, e)
 
         send_result = None
         try:
@@ -471,7 +486,7 @@ def register_routes(app, deps):
 
         msg_id = extract_msg_id(send_result)
 
-        rel_path = f"statics/senditems/{dest.name}"
+        rel_path = f"statics/media/{media_name}"
         msg_data = {
             "role": "assistant",
             "content": "[Áudio]",

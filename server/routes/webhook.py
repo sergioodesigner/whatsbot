@@ -10,6 +10,7 @@ import time
 import uuid
 from pathlib import Path
 
+import httpx
 from gowa.client import GOWASendError, extract_msg_id
 
 from db.repositories import contact_repo, message_repo
@@ -145,6 +146,51 @@ def register_routes(app, deps):
             media_path, normalized, [str(p) for p in candidates]
         )
         return normalized
+
+    def _download_media_from_url(media_url: str, fallback_ext: str = "bin") -> str | None:
+        """Download media from URL and save into tenant statics/media."""
+        if not media_url or not str(media_url).startswith(("http://", "https://")):
+            return None
+        data_dir = Path(settings.data_dir)
+        statics_media_dir = data_dir / "statics" / "media"
+        statics_media_dir.mkdir(parents=True, exist_ok=True)
+
+        url_no_query = str(media_url).split("?", 1)[0]
+        ext = Path(url_no_query).suffix.lower().lstrip(".")
+        if not ext:
+            ext = fallback_ext
+        ext = re.sub(r"[^a-z0-9]", "", ext.lower()) or fallback_ext
+        filename = f"{int(time.time())}-{uuid.uuid4()}.{ext}"
+        dest = statics_media_dir / filename
+
+        try:
+            with httpx.Client(timeout=25.0, follow_redirects=True) as client:
+                resp = client.get(str(media_url))
+                resp.raise_for_status()
+                if not resp.content:
+                    return None
+                dest.write_bytes(resp.content)
+                return f"statics/media/{filename}"
+        except Exception as e:
+            logger.warning("[Webhook] Failed to download media URL %s: %s", media_url, e)
+            return None
+
+    def _resolve_media_field(raw_media, fallback_ext: str) -> str | None:
+        """Resolve media field from webhook payload (path or URL)."""
+        if not raw_media:
+            return None
+        if isinstance(raw_media, str):
+            return _sync_media_to_statics(raw_media)
+        if isinstance(raw_media, dict):
+            path_value = raw_media.get("path", "")
+            if path_value:
+                resolved = _sync_media_to_statics(path_value)
+                if resolved:
+                    return resolved
+            url_value = raw_media.get("url", "") or raw_media.get("link", "") or raw_media.get("download_url", "")
+            if url_value:
+                return _download_media_from_url(str(url_value), fallback_ext=fallback_ext)
+        return None
 
     # ── Group Mention Helpers ──────────────────────────────────────
 
@@ -693,7 +739,7 @@ def register_routes(app, deps):
             if isinstance(raw_image, str):
                 image_path = _sync_media_to_statics(raw_image)
             elif isinstance(raw_image, dict):
-                image_path = _sync_media_to_statics(raw_image.get("path", ""))
+                image_path = _resolve_media_field(raw_image, "jpg")
                 if not text:
                     text = (raw_image.get("caption", "") or "").strip()
 
@@ -702,17 +748,17 @@ def register_routes(app, deps):
             if isinstance(raw_audio, str):
                 audio_path = _sync_media_to_statics(raw_audio)
             elif isinstance(raw_audio, dict):
-                audio_path = _sync_media_to_statics(raw_audio.get("path", ""))
+                audio_path = _resolve_media_field(raw_audio, "ogg")
 
         # WhatsApp GIFs may arrive under "video" with gif flags/mime.
         raw_video = data.get("video")
         if raw_video:
             if isinstance(raw_video, str):
-                candidate = _normalize_media_path(raw_video)
+                candidate = _sync_media_to_statics(raw_video)
                 if candidate and candidate.lower().endswith(".gif"):
                     gif_path = candidate
             elif isinstance(raw_video, dict):
-                candidate = _normalize_media_path(raw_video.get("path", ""))
+                candidate = _resolve_media_field(raw_video, "mp4")
                 mime = str(raw_video.get("mimetype", raw_video.get("mime_type", ""))).lower()
                 is_gif = bool(
                     raw_video.get("is_gif")
@@ -735,7 +781,7 @@ def register_routes(app, deps):
             if isinstance(raw_vn, str):
                 audio_path = _sync_media_to_statics(raw_vn)
             elif isinstance(raw_vn, dict):
-                audio_path = _sync_media_to_statics(raw_vn.get("path", ""))
+                audio_path = _resolve_media_field(raw_vn, "mp4")
 
         # For audio without text, set a placeholder
         if audio_path and not text:
