@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
+import { getBillingInvoices } from '../services/api.js';
 
 const html = htm.bind(h);
 
@@ -35,6 +36,22 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
 
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [promptFullscreen, setPromptFullscreen] = useState(false);
+  const [invoices, setInvoices] = useState([]);
+  const [billingLoading, setBillingLoading] = useState(false);
+
+  function formatDateBr(ts) {
+    if (!ts) return '-';
+    const d = new Date(ts * 1000);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = d.toLocaleString('pt-BR', { month: 'long' }).toLowerCase();
+    return `${day}-${month}-${d.getFullYear()}`;
+  }
+
+  function invoiceBadge(invoice) {
+    if (invoice.paid) return html`<span class="px-2 py-0.5 rounded bg-green-100 text-green-700 text-xs font-semibold">Pago</span>`;
+    if ((invoice.due_ts || 0) * 1000 < Date.now()) return html`<span class="px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs font-semibold">Atrasado</span>`;
+    return html`<span class="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700 text-xs font-semibold">Pendente</span>`;
+  }
 
   // Populate form when config loads
   useEffect(() => {
@@ -52,6 +69,20 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
       setDefaultAiEnabled(config.default_ai_enabled ?? true);
     }
   }, [config]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadInvoices() {
+      setBillingLoading(true);
+      const res = await getBillingInvoices();
+      if (!cancelled) {
+        setInvoices(res?.ok ? (res.data?.invoices || []) : []);
+        setBillingLoading(false);
+      }
+    }
+    loadInvoices();
+    return () => { cancelled = true; };
+  }, []);
 
   async function handleSave() {
     const data = {
@@ -301,6 +332,37 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
           ` : null}
         </div>
 
+      <//>
+
+      <${Section} title="Financeiro">
+        ${billingLoading ? html`
+          <div class="text-sm text-wa-secondary">Carregando faturas...</div>
+        ` : invoices.length ? html`
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead>
+                <tr class="border-b border-wa-border">
+                  <th class="py-2 pr-3">Período</th>
+                  <th class="py-2 pr-3">Vencimento</th>
+                  <th class="py-2 pr-3">Valor</th>
+                  <th class="py-2 pr-3">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${invoices.map((inv) => html`
+                  <tr class="border-b border-wa-border/70">
+                    <td class="py-2 pr-3 font-medium">${inv.period_ym || '-'}</td>
+                    <td class="py-2 pr-3">${formatDateBr(inv.due_ts)}</td>
+                    <td class="py-2 pr-3">R$ ${Number(inv.amount || 0).toFixed(2)}</td>
+                    <td class="py-2 pr-3">${invoiceBadge(inv)}</td>
+                  </tr>
+                `)}
+              </tbody>
+            </table>
+          </div>
+        ` : html`
+          <div class="text-sm text-wa-secondary">Nenhuma fatura disponível no momento.</div>
+        `}
       <//>
 
       <!-- Save Button (sticky) -->

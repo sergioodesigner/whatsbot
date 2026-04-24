@@ -246,6 +246,12 @@ export async function getUsageContactDetail(phone, params = {}) {
   return request('GET', `/api/usage/contact/${encodeURIComponent(phone)}${qs ? '?' + qs : ''}`);
 }
 
+// ── Billing ───────────────────────────────────────────────────────
+
+export async function getBillingInvoices() {
+  return request('GET', '/api/billing/invoices');
+}
+
 // ── Update ────────────────────────────────────────────────────────
 
 export async function checkForUpdates() {

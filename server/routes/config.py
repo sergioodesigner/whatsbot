@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from db.repositories import master_policy_repo
+from db.repositories import master_policy_repo, master_billing_repo
 from server.tenant import current_tenant_slug
 from server.auth import generate_salt, hash_password
 from server.helpers import _ok, _err, _mask_key
@@ -198,3 +198,17 @@ def register_routes(app, deps):
             "bot_phone": state.bot_phone,
             "bot_name": state.bot_name,
         })
+
+    @app.get("/api/billing/invoices")
+    async def get_billing_invoices():
+        """Read-only invoices for current tenant panel."""
+        slug = current_tenant_slug.get()
+        if not slug or slug in ("default", "__superadmin__"):
+            return _ok({"invoices": [], "financial": None})
+        try:
+            invoices = master_billing_repo.list_invoices(slug)
+            financial = master_billing_repo.get_financial_summary(slug)
+            return _ok({"invoices": invoices, "financial": financial})
+        except RuntimeError:
+            # Single-tenant mode may not have master DB.
+            return _ok({"invoices": [], "financial": None})
