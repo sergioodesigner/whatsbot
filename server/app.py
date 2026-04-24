@@ -399,7 +399,16 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
     _SUPERADMIN_ONLY_SPA_PATHS = {"/sandbox", "/costs", "/executions"}
     _SUPERADMIN_ONLY_API_PREFIXES = ("/api/sandbox", "/api/usage", "/api/executions")
     _DELEGATED_ALLOWED_SPA_PATHS = {"/sandbox", "/costs", "/executions"}
-    _DELEGATED_ALLOWED_API_PREFIXES = ("/api/sandbox", "/api/usage", "/api/executions", "/api/status", "/api/tenant/info")
+    _DELEGATED_ALLOWED_API_PREFIXES = (
+        "/api/sandbox",
+        "/api/usage",
+        "/api/executions",
+        "/api/status",
+        "/api/tenant/info",
+        "/api/logs",
+        "/api/config",
+        "/api/auth/check",
+    )
 
     def _extract_superadmin_token(request: Request) -> str:
         token = (request.headers.get("x-superadmin-token", "") or "").strip()

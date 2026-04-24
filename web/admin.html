@@ -19,8 +19,8 @@
         <h2 class="text-lg font-semibold">Setup inicial</h2>
         <p class="text-sm text-slate-600">Cria o primeiro superadmin (uma unica vez).</p>
         <form id="setup-form" class="space-y-3">
-          <input id="setup-username" class="w-full border rounded px-3 py-2" placeholder="Usuario" required />
-          <input id="setup-password" type="password" class="w-full border rounded px-3 py-2" placeholder="Senha (min 6)" required />
+          <input id="setup-username" class="w-full border rounded px-3 py-2" placeholder="Usuario" autocomplete="username" required />
+          <input id="setup-password" type="password" class="w-full border rounded px-3 py-2" placeholder="Senha (min 6)" autocomplete="new-password" required />
           <button class="bg-slate-900 text-white px-4 py-2 rounded" type="submit">Criar superadmin</button>
         </form>
       </div>
@@ -31,8 +31,8 @@
         <h2 class="text-lg font-semibold">Login superadmin</h2>
         <p class="text-sm text-slate-600">Entre para acessar o painel de tenants.</p>
         <form id="login-form" class="space-y-3">
-          <input id="login-username" class="w-full border rounded px-3 py-2" placeholder="Usuario" required />
-          <input id="login-password" type="password" class="w-full border rounded px-3 py-2" placeholder="Senha" required />
+          <input id="login-username" class="w-full border rounded px-3 py-2" placeholder="Usuario" autocomplete="username" required />
+          <input id="login-password" type="password" class="w-full border rounded px-3 py-2" placeholder="Senha" autocomplete="current-password" required />
           <button class="bg-blue-700 text-white px-4 py-2 rounded" type="submit">Entrar</button>
         </form>
       </div>
