@@ -454,6 +454,7 @@ export function Contacts({ newMessage, chatPresence, contactInfoUpdated, tagsCha
         let lastPreview = (message.content || '').substring(0, 80);
         if (message.media_type === 'image') lastPreview = message.content || '📷 Imagem';
         if (message.media_type === 'audio') lastPreview = '🎤 Áudio';
+        if (message.media_type === 'gif') lastPreview = '🎞️ GIF';
         if (message.media_type === 'video') lastPreview = '🎬 Vídeo';
         updated[idx] = {
           ...updated[idx],
