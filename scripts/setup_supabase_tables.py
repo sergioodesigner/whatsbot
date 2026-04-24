@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Re-use the schema from the connection module
 try:
     from db.master_pg_connection import _MASTER_SCHEMA_PG
+    from db.tenant_pg_connection import _TENANT_SCHEMA_PG
 except ImportError:
     print("Run this from the project root directory.", file=sys.stderr)
     sys.exit(1)
@@ -46,8 +47,9 @@ def main():
     try:
         with conn.cursor() as cur:
             cur.execute(_MASTER_SCHEMA_PG)
+            cur.execute(_TENANT_SCHEMA_PG)
         conn.commit()
-        print("✓ Master schema applied (tables created/verified).")
+        print("✓ Master and Tenant schemas applied (tables created/verified).")
     except Exception as exc:
         conn.rollback()
         print(f"✗ Failed to apply schema: {exc}", file=sys.stderr)
