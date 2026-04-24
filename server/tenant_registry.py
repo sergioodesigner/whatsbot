@@ -100,57 +100,56 @@ class TenantRegistry:
         (data_dir / "statics" / "avatars").mkdir(parents=True, exist_ok=True)
         (data_dir / "logs").mkdir(parents=True, exist_ok=True)
 
-        # Load settings for this tenant (need to set contextvar so Settings
-        # reads from the correct database)
+        # Any component that touches repos (Settings, AgentHandler/TagRegistry,
+        # memory bootstrap, etc.) must run with this tenant DB context.
         token = current_tenant_db.set(db_name)
         try:
             settings = Settings(data_dir=data_dir)
+            # If tenant has its own API key, use it; otherwise fall back to settings
+            api_key = tenant_data.get("openrouter_api_key", "") or settings.get("openrouter_api_key", "")
+
+            # Create GOWA manager and client for this tenant
+            webhook_url = f"http://127.0.0.1:{self._web_port}/api/webhook/{slug}"
+            gowa_manager = GOWAManager(
+                port=gowa_port,
+                data_dir=data_dir,
+                webhook_url=webhook_url,
+            )
+            gowa_client = GOWAClient(port=gowa_port)
+
+            # Create agent handler for this tenant
+            agent_handler = AgentHandler(
+                api_key=api_key,
+                system_prompt=settings.get("system_prompt", "Você é um assistente útil."),
+                max_context_messages=settings.get("max_context_messages", 10),
+                inactivity_timeout_min=settings.get("inactivity_timeout_min", 30),
+                model=settings.get("model", "openai/gpt-4o-mini"),
+                audio_model=settings.get("audio_model", "google/gemini-2.0-flash-001"),
+                image_model=settings.get("image_model", "google/gemini-2.0-flash-001"),
+                default_ai_enabled=settings.get("default_ai_enabled", True),
+            )
+
+            # Per-tenant WebSocket manager and state
+            ws_manager = ConnectionManager()
+            state = AppState()
+
+            ctx = TenantContext(
+                tenant_id=tenant_data["id"],
+                slug=slug,
+                name=tenant_data["name"],
+                status=tenant_data["status"],
+                db_name=db_name,
+                data_dir=data_dir,
+                settings=settings,
+                state=state,
+                gowa_manager=gowa_manager,
+                gowa_client=gowa_client,
+                agent_handler=agent_handler,
+                ws_manager=ws_manager,
+                gowa_port=gowa_port,
+            )
         finally:
             current_tenant_db.reset(token)
-
-        # If tenant has its own API key, use it; otherwise fall back to settings
-        api_key = tenant_data.get("openrouter_api_key", "") or settings.get("openrouter_api_key", "")
-
-        # Create GOWA manager and client for this tenant
-        webhook_url = f"http://127.0.0.1:{self._web_port}/api/webhook/{slug}"
-        gowa_manager = GOWAManager(
-            port=gowa_port,
-            data_dir=data_dir,
-            webhook_url=webhook_url,
-        )
-        gowa_client = GOWAClient(port=gowa_port)
-
-        # Create agent handler for this tenant
-        agent_handler = AgentHandler(
-            api_key=api_key,
-            system_prompt=settings.get("system_prompt", "Você é um assistente útil."),
-            max_context_messages=settings.get("max_context_messages", 10),
-            inactivity_timeout_min=settings.get("inactivity_timeout_min", 30),
-            model=settings.get("model", "openai/gpt-4o-mini"),
-            audio_model=settings.get("audio_model", "google/gemini-2.0-flash-001"),
-            image_model=settings.get("image_model", "google/gemini-2.0-flash-001"),
-            default_ai_enabled=settings.get("default_ai_enabled", True),
-        )
-
-        # Per-tenant WebSocket manager and state
-        ws_manager = ConnectionManager()
-        state = AppState()
-
-        ctx = TenantContext(
-            tenant_id=tenant_data["id"],
-            slug=slug,
-            name=tenant_data["name"],
-            status=tenant_data["status"],
-            db_name=db_name,
-            data_dir=data_dir,
-            settings=settings,
-            state=state,
-            gowa_manager=gowa_manager,
-            gowa_client=gowa_client,
-            agent_handler=agent_handler,
-            ws_manager=ws_manager,
-            gowa_port=gowa_port,
-        )
 
         # Set up GOWA restart callback
         def _on_gowa_restart():
