@@ -147,6 +147,8 @@ def _main_saas(data_dir: Path):
                 "MASTER_DB_BACKEND=supabase but SUPABASE_DB_URL is not set. "
                 "Falling back to SQLite master DB."
             )
+            # Override env var so the repo proxy resolves the SQLite module
+            os.environ["MASTER_DB_BACKEND"] = "sqlite"
             _master_backend = "sqlite"
         else:
             init_master_pg(_pg_url)
@@ -157,6 +159,7 @@ def _main_saas(data_dir: Path):
         master_db_path = data_dir / "master.db"
         init_master_db(master_db_path)
         logger.info("Master database ready at %s", master_db_path)
+
 
     # Create superadmin if none exists (prompt for initial setup via API)
     from db.repositories import tenant_repo
