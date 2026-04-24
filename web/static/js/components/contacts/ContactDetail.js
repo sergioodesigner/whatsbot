@@ -556,8 +556,7 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
                           preload="metadata"
                         ></video>
                       `;
-                    })()
-                    ` : m.media_type === 'video' ? html`
+                    })() : m.media_type === 'video' ? html`
                       <video
                         src="${normalizeMediaSrc(m.media_path, m._isLocalBlob)}"
                         class="rounded-[4px] max-w-full max-h-[320px] mb-1 bg-black"
