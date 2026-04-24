@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WhatsBot SaaS Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen">
+  <main class="max-w-5xl mx-auto p-6 space-y-6">
+    <header class="bg-white rounded-xl shadow p-5">
+      <h1 class="text-2xl font-bold">WhatsBot SaaS - Superadmin</h1>
+      <p class="text-sm text-slate-600 mt-1">Setup inicial, login e gestao de tenants.</p>
+      <p id="status" class="text-sm mt-3 text-slate-700">Carregando...</p>
+    </header>
+
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl shadow p-5 space-y-3">
+        <h2 class="text-lg font-semibold">Setup inicial</h2>
+        <p class="text-sm text-slate-600">Cria o primeiro superadmin (uma unica vez).</p>
+        <form id="setup-form" class="space-y-3">
+          <input id="setup-username" class="w-full border rounded px-3 py-2" placeholder="Usuario" required />
+          <input id="setup-password" type="password" class="w-full border rounded px-3 py-2" placeholder="Senha (min 6)" required />
+          <button class="bg-slate-900 text-white px-4 py-2 rounded" type="submit">Criar superadmin</button>
+        </form>
+      </div>
+
+      <div class="bg-white rounded-xl shadow p-5 space-y-3">
+        <h2 class="text-lg font-semibold">Login superadmin</h2>
+        <p class="text-sm text-slate-600">Atualmente o backend valida por subdominio admin.</p>
+        <form id="login-form" class="space-y-3">
+          <input id="login-username" class="w-full border rounded px-3 py-2" placeholder="Usuario" required />
+          <input id="login-password" type="password" class="w-full border rounded px-3 py-2" placeholder="Senha" required />
+          <button class="bg-blue-700 text-white px-4 py-2 rounded" type="submit">Entrar</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="bg-white rounded-xl shadow p-5 space-y-4">
+      <h2 class="text-lg font-semibold">Criar empresa (tenant)</h2>
+      <form id="tenant-form" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <input id="tenant-name" class="border rounded px-3 py-2 md:col-span-2" placeholder="Nome da empresa" required />
+        <input id="tenant-slug" class="border rounded px-3 py-2" placeholder="slug (ex: empresa1)" required />
+        <button class="bg-emerald-700 text-white px-4 py-2 rounded" type="submit">Criar tenant</button>
+      </form>
+      <p class="text-sm text-slate-600">A URL do tenant sera: <code class="bg-slate-100 px-1 rounded">&lt;slug&gt;.&lt;seu-dominio-base&gt;</code></p>
+    </section>
+
+    <section class="bg-white rounded-xl shadow p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Tenants cadastrados</h2>
+        <button id="refresh-tenants" class="border px-3 py-1 rounded">Atualizar</button>
+      </div>
+      <div id="tenants" class="overflow-x-auto text-sm text-slate-700">
+        <p>Carregando lista...</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const tenantsEl = document.getElementById("tenants");
+    let adminToken = "";
+
+    function setStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.className = isError
+        ? "text-sm mt-3 text-red-600"
+        : "text-sm mt-3 text-slate-700";
+    }
+
+    async function api(path, options = {}) {
+      const headers = Object.assign(
+        { "Content-Type": "application/json" },
+        options.headers || {}
+      );
+      if (adminToken) {
+        headers.Authorization = `Bearer ${adminToken}`;
+      }
+      const res = await fetch(path, Object.assign({}, options, { headers }));
+      const data = await res.json().catch(() => ({ ok: false, error: "Resposta invalida" }));
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || `Erro ${res.status}`);
+      }
+      return data.data;
+    }
+
+    async function loadSetupStatus() {
+      try {
+        const data = await api("/api/admin/setup-status");
+        if (data.needs_setup) {
+          setStatus("Setup inicial pendente. Crie o primeiro superadmin.");
+        } else {
+          setStatus("Superadmin ja configurado. Faca login.");
+        }
+      } catch (err) {
+        setStatus(`Falha ao consultar setup: ${err.message}`, true);
+      }
+    }
+
+    async function loadTenants() {
+      try {
+        const tenants = await api("/api/admin/tenants");
+        if (!tenants.length) {
+          tenantsEl.innerHTML = "<p>Nenhum tenant cadastrado ainda.</p>";
+          return;
+        }
+        const rows = tenants.map((t) => `
+          <tr class="border-b">
+            <td class="py-2 pr-4 font-medium">${t.name}</td>
+            <td class="py-2 pr-4">${t.slug}</td>
+            <td class="py-2 pr-4">${t.status}</td>
+            <td class="py-2 pr-4">${t.whatsapp_connected ? "Sim" : "Nao"}</td>
+            <td class="py-2 pr-4">${t.msg_count}</td>
+          </tr>
+        `).join("");
+        tenantsEl.innerHTML = `
+          <table class="w-full text-left">
+            <thead>
+              <tr class="border-b">
+                <th class="py-2 pr-4">Nome</th>
+                <th class="py-2 pr-4">Slug</th>
+                <th class="py-2 pr-4">Status</th>
+                <th class="py-2 pr-4">WhatsApp</th>
+                <th class="py-2 pr-4">Mensagens</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      } catch (err) {
+        tenantsEl.innerHTML = `<p class="text-red-600">Falha ao carregar tenants: ${err.message}</p>`;
+      }
+    }
+
+    document.getElementById("setup-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = document.getElementById("setup-username").value.trim();
+      const password = document.getElementById("setup-password").value;
+      try {
+        const data = await api("/api/admin/setup", {
+          method: "POST",
+          body: JSON.stringify({ username, password }),
+        });
+        adminToken = data.token || "";
+        setStatus("Superadmin criado com sucesso.");
+        await loadTenants();
+      } catch (err) {
+        setStatus(`Erro no setup: ${err.message}`, true);
+      }
+    });
+
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = document.getElementById("login-username").value.trim();
+      const password = document.getElementById("login-password").value;
+      try {
+        const data = await api("/api/admin/login", {
+          method: "POST",
+          body: JSON.stringify({ username, password }),
+        });
+        adminToken = data.token || "";
+        setStatus(`Login OK. Usuario: ${data.username}`);
+        await loadTenants();
+      } catch (err) {
+        setStatus(`Erro no login: ${err.message}`, true);
+      }
+    });
+
+    document.getElementById("tenant-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("tenant-name").value.trim();
+      const slug = document.getElementById("tenant-slug").value.trim().toLowerCase();
+      try {
+        await api("/api/admin/tenants", {
+          method: "POST",
+          body: JSON.stringify({ name, slug }),
+        });
+        setStatus(`Tenant '${slug}' criado com sucesso.`);
+        e.target.reset();
+        await loadTenants();
+      } catch (err) {
+        setStatus(`Erro ao criar tenant: ${err.message}`, true);
+      }
+    });
+
+    document.getElementById("refresh-tenants").addEventListener("click", loadTenants);
+
+    loadSetupStatus();
+    loadTenants();
+  </script>
+</body>
+</html>

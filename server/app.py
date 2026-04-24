@@ -397,6 +397,20 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
         path = request.url.path
+        from server.tenant import current_tenant_slug
+
+        # On admin subdomain, only admin APIs are valid.
+        # This prevents tenant route handlers from raising RuntimeError
+        # when old/default frontend assets call /api/auth/*, /api/config, etc.
+        if (
+            path.startswith("/api/")
+            and current_tenant_slug.get() == "__superadmin__"
+            and not path.startswith("/api/admin/")
+        ):
+            return JSONResponse(
+                {"ok": False, "error": "Endpoint disponível apenas para tenants."},
+                status_code=404,
+            )
 
         if path in _SPA_PATHS or path.startswith(("/contacts/",)):
             return await call_next(request)
