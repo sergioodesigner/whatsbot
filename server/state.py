@@ -87,6 +87,8 @@ class AppState:
         # Each item: {"text": str, "image_path": str|None, "audio_path": str|None}
         self.pending_messages: dict[str, list[dict]] = {}  # phone -> [msg_dict, ...]
         self.batch_tasks: dict[str, asyncio.Task] = {}  # phone -> scheduled task
+        # Per-contact lock to avoid concurrent batch processing for the same chat
+        self.batch_locks: dict[str, asyncio.Lock] = {}
         # Track recently sent replies to filter GOWA webhook echo-backs
         self.recently_sent: dict[str, float] = {}  # "phone:content_hash" -> timestamp
         # Bot's own identity for @mention detection in groups

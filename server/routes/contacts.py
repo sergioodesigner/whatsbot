@@ -273,10 +273,11 @@ def register_routes(app, deps):
             await asyncio.to_thread(agent_handler.mark_message_sent, phone, message, msg_id)
         except Exception as e:
             logger.error("[Retry] Failed to update message status for %s: %s", phone, e)
+            return _err(f"Mensagem reenviada, mas falhou ao atualizar status local: {e}", status=500)
 
         state.msg_count += 1
         logger.info("[Retry] Resent to %s: %s", phone, message[:80])
-        return _ok({"message": "Mensagem reenviada."})
+        return _ok({"message": "Mensagem reenviada.", "msg_id": msg_id})
 
     @app.post("/api/contacts/{phone}/send-image")
     async def send_image_to_contact(

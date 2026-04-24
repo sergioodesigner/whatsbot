@@ -95,6 +95,18 @@ def get_by_phone(phone: str) -> dict | None:
     return _row_to_dict(row)
 
 
+def get_by_id(contact_id: int) -> dict | None:
+    """Get a contact by id."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM contacts WHERE id = ?",
+        (contact_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_to_dict(row)
+
+
 def update(contact_id: int, **fields) -> None:
     """Update specific fields on a contact."""
     if not fields:

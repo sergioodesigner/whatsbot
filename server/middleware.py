@@ -61,6 +61,21 @@ def create_tenant_middleware(registry, base_domain: str):
                         status_code=404,
                     )
 
+        # Webhook query-mode: /api/webhook?tenant=<slug>
+        # This is used by internal GOWA callbacks in SaaS mode.
+        if path == "/api/webhook":
+            slug = (request.query_params.get("tenant", "") or "").strip().lower()
+            if slug:
+                tenant = registry.get_by_slug(slug)
+                if tenant:
+                    current_tenant_slug.set(slug)
+                    current_tenant_db.set(tenant.db_name)
+                    return await call_next(request)
+                return JSONResponse(
+                    {"ok": False, "error": f"Tenant '{slug}' não encontrado."},
+                    status_code=404,
+                )
+
         # ── Resolve tenant from subdomain ─────────────────────────
         subdomain = ""
         if host.endswith(f".{base_domain}"):

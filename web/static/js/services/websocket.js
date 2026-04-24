@@ -5,6 +5,7 @@
 export function createWebSocket(handlers) {
   let ws = null;
   let reconnectTimer = null;
+  let pingTimer = null;
   let closed = false;
 
   function connect() {
@@ -16,6 +17,12 @@ export function createWebSocket(handlers) {
     ws = new WebSocket(`${protocol}//${location.host}/ws${qs}`);
 
     ws.onopen = () => {
+      if (pingTimer) clearInterval(pingTimer);
+      pingTimer = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'ping' }));
+        }
+      }, 25000);
       if (handlers.onConnect) handlers.onConnect();
     };
 
@@ -30,6 +37,10 @@ export function createWebSocket(handlers) {
     };
 
     ws.onclose = () => {
+      if (pingTimer) {
+        clearInterval(pingTimer);
+        pingTimer = null;
+      }
       if (handlers.onDisconnect) handlers.onDisconnect();
       if (!closed) {
         reconnectTimer = setTimeout(connect, 3000);
@@ -47,6 +58,7 @@ export function createWebSocket(handlers) {
     close() {
       closed = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (pingTimer) clearInterval(pingTimer);
       if (ws) ws.close();
     }
   };

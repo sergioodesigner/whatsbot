@@ -215,18 +215,22 @@ def register_routes(app, deps):
 
     async def _process_batch(phone: str, delay: float):
         """Wait for batch delay, then process all accumulated messages."""
-        await asyncio.sleep(delay)
-
-        items = state.pending_messages.pop(phone, [])
-        state.batch_tasks.pop(phone, None)
-
-        if not items:
+        try:
+            await asyncio.sleep(delay)
+        except asyncio.CancelledError:
             return
 
-        # Create execution tracking
-        exec_id = await astart_execution(phone, "webhook")
+        lock = state.batch_locks.setdefault(phone, asyncio.Lock())
+        async with lock:
+            items = state.pending_messages.pop(phone, [])
+            state.batch_tasks.pop(phone, None)
 
-        try:
+            if not items:
+                return
+
+            # Create execution tracking
+            exec_id = await astart_execution(phone, "webhook")
+
             # Record webhook payload
             await atrack_step("webhook_received", {
                 "phone": phone,
@@ -408,22 +412,20 @@ def register_routes(app, deps):
 
             # Finalize execution as completed
             await aend_execution(exec_id)
-        except Exception as exc:
-            await aend_execution(exec_id, error=str(exc))
 
-        # Prune old executions if beyond limit
-        max_exec = settings.get("max_executions", 200)
-        try:
-            await asyncio.to_thread(prune_executions, max_exec)
-        except Exception:
-            pass
+            # Prune old executions if beyond limit
+            max_exec = settings.get("max_executions", 200)
+            try:
+                await asyncio.to_thread(prune_executions, max_exec)
+            except Exception:
+                pass
 
     # ── Webhook Endpoint ──────────────────────────────────────────
 
     @app.post("/api/webhook")
     async def webhook(body: dict):
         """Receive real-time message events from GOWA webhook."""
-        event = body.get("event", "")
+        event = (body.get("event") or body.get("type") or "").strip().lower()
         # GOWA wraps message data inside "payload"
         data = body.get("payload", body.get("data", body))
 
@@ -452,7 +454,7 @@ def register_routes(app, deps):
 
         # Handle message.ack events (delivery + read receipts from WhatsApp)
         if event == "message.ack":
-            receipt_type = data.get("receipt_type", "")
+            receipt_type = (data.get("receipt_type", "") or "").strip().lower()
             msg_ids = data.get("ids", [])
 
             # Extract phone from ack payload (try multiple fields, GOWA is inconsistent)
@@ -469,6 +471,10 @@ def register_routes(app, deps):
             if not ack_phone and msg_ids:
                 cid = await asyncio.to_thread(message_repo.get_contact_id_by_msg_id, msg_ids[0])
                 if cid:
+                    db_contact = await asyncio.to_thread(contact_repo.get_by_id, cid)
+                    if db_contact:
+                        ack_phone = db_contact["phone"]
+                if cid and not ack_phone:
                     for phone_key, contact in agent_handler._contacts.items():
                         if contact.id == cid:
                             ack_phone = phone_key

@@ -389,7 +389,7 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
     # ── Auth middleware ────────────────────────────────────────────────
 
     _AUTH_EXEMPT_PREFIXES = (
-        "/static/", "/statics/", "/api/webhook/", "/api/auth/",
+        "/static/", "/statics/", "/api/webhook", "/api/auth/",
         "/api/admin/setup", "/api/admin/login", "/health",
     )
     _SPA_PATHS = {"/", "/dashboard", "/sandbox", "/costs", "/executions"}
@@ -495,21 +495,15 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
 
     @app.post("/api/webhook/{tenant_slug}")
     async def saas_webhook(tenant_slug: str, body: dict):
-        """Webhook endpoint for GOWA — routes to the correct tenant."""
-        ctx = registry.get_by_slug(tenant_slug)
-        if not ctx:
-            return JSONResponse({"ok": False, "error": "Tenant not found"}, status_code=404)
-
-        # Set tenant context for this request
-        from server.tenant import current_tenant_db as ct_db, current_tenant_slug as ct_slug
-        ct_db.set(ctx.db_name)
-        ct_slug.set(tenant_slug)
-
-        # Delegate to the webhook handler — it will use deps proxy which
-        # now resolves to this tenant's context
-        # For now, import and call the webhook processing inline
-        # (The full webhook route module will be adapted in Phase 2 integration)
-        return {"ok": True, "status": "received"}
+        # Keep this route only as a guardrail. The canonical SaaS webhook endpoint
+        # is /api/webhook?tenant=<slug>, which is fully processed by webhook routes.
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "Use /api/webhook?tenant=<slug> para processamento completo do webhook.",
+            },
+            status_code=410,
+        )
 
     # ── Register route modules (using tenant-aware deps proxy) ────────
 

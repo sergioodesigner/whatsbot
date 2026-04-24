@@ -115,7 +115,7 @@ def update_status(contact_id: int, content: str, new_status: str | None,
 def update_status_by_msg_id(msg_id: str, new_status: str) -> list[str]:
     """Update delivery status by GOWA msg_id. Forward-only: sent → delivered → read.
 
-    Does not overwrite 'operator' or 'failed' statuses.
+    Does not overwrite 'failed' statuses.
     Also cascades the status to all prior outgoing messages for the same contact,
     because if message N was delivered/read, all earlier messages were too.
 
@@ -130,7 +130,7 @@ def update_status_by_msg_id(msg_id: str, new_status: str) -> list[str]:
         """UPDATE messages SET status = ?
            WHERE msg_id = ?
              AND status IS NOT NULL
-             AND status IN ('sent', 'delivered')""",
+             AND status IN ('sent', 'delivered', 'operator')""",
         (new_status, msg_id),
     )
     if cur.rowcount > 0:
@@ -142,7 +142,7 @@ def update_status_by_msg_id(msg_id: str, new_status: str) -> list[str]:
         (msg_id,),
     ).fetchone()
     if row:
-        prior_statuses = ('sent',) if new_status == 'delivered' else ('sent', 'delivered')
+        prior_statuses = ('sent', 'operator') if new_status == 'delivered' else ('sent', 'delivered', 'operator')
         placeholders = ','.join('?' for _ in prior_statuses)
         # Find msg_ids of prior messages that will be cascaded
         prior_rows = conn.execute(
