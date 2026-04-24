@@ -54,91 +54,111 @@ class ServerDeps:
 
 # ── Multi-tenant Deps Proxy ──────────────────────────────────────────────
 
-class _LazyProxy:
-    """Delays attribute access until it's actually used inside a request."""
-    def __init__(self, registry, attr_name):
-        self._registry = registry
-        self._attr_name = attr_name
+class TenantAwareDeps:
+    """Proxy that resolves deps from the current tenant's context.
 
-    def _get_target(self):
+    Routes continue using ``deps.settings``, ``deps.gowa_client``, etc.
+    without any code changes — the proxy transparently returns the correct
+    instance based on the current_tenant_slug contextvar.
+    """
+
+    class _TenantObjectProxy:
+        """Lazily resolves a tenant-scoped object on each access.
+
+        This allows route modules to keep the existing pattern of binding
+        `settings = deps.settings` at registration time, while still using the
+        correct tenant object at request time.
+        """
+
+        def __init__(self, resolver):
+            self._resolver = resolver
+
+        def _obj(self):
+            return self._resolver()
+
+        def __getattr__(self, name):
+            return getattr(self._obj(), name)
+
+        def __getitem__(self, key):
+            return self._obj()[key]
+
+        def __setitem__(self, key, value):
+            self._obj()[key] = value
+
+        def __contains__(self, item):
+            return item in self._obj()
+
+        def __iter__(self):
+            return iter(self._obj())
+
+        def __len__(self):
+            return len(self._obj())
+
+        def __bool__(self):
+            return bool(self._obj())
+
+        def __str__(self):
+            return str(self._obj())
+
+        def __repr__(self):
+            return repr(self._obj())
+
+        def __fspath__(self):
+            return os.fspath(self._obj())
+
+        def __truediv__(self, other):
+            return self._obj() / other
+
+    def __init__(self, registry, memory_log_handler):
+        self._registry = registry
+        self.memory_log_handler = memory_log_handler
+        # broadcast_tool_calls is set per-tenant after webhook registers
+        self.broadcast_tool_calls = None
+        self._settings_proxy = self._TenantObjectProxy(lambda: self._current().settings)
+        self._gowa_manager_proxy = self._TenantObjectProxy(lambda: self._current().gowa_manager)
+        self._gowa_client_proxy = self._TenantObjectProxy(lambda: self._current().gowa_client)
+        self._agent_handler_proxy = self._TenantObjectProxy(lambda: self._current().agent_handler)
+        self._ws_manager_proxy = self._TenantObjectProxy(lambda: self._current().ws_manager)
+        self._state_proxy = self._TenantObjectProxy(lambda: self._current().state)
+        self._statics_senditems_dir_proxy = self._TenantObjectProxy(
+            lambda: self._current().data_dir / "statics" / "senditems"
+        )
+
+    def _current(self):
         from server.tenant import current_tenant_slug
         slug = current_tenant_slug.get()
         ctx = self._registry.get_by_slug(slug)
         if ctx is None:
             raise RuntimeError(f"No tenant context for slug '{slug}'")
-        return getattr(ctx, self._attr_name)
-
-    def __getattr__(self, name):
-        return getattr(self._get_target(), name)
-
-    def __setitem__(self, key, value):
-        self._get_target()[key] = value
-
-    def __getitem__(self, key):
-        return self._get_target()[key]
-        
-    def __bool__(self):
-        return bool(self._get_target())
-        
-    def get(self, *args, **kwargs):
-        return self._get_target().get(*args, **kwargs)
-
-
-class TenantAwareDeps:
-    """Proxy that resolves deps from the current tenant's context.
-
-    Routes continue using ``deps.settings``, ``deps.gowa_client``, etc.
-    without any code changes. Returns a LazyProxy so the resolution
-    happens inside the request.
-    """
-
-    def __init__(self, registry, memory_log_handler):
-        self._registry = registry
-        self.memory_log_handler = memory_log_handler
-        self.broadcast_tool_calls = None
+        return ctx
 
     @property
     def settings(self):
-        return _LazyProxy(self._registry, "settings")
+        return self._settings_proxy
 
     @property
     def gowa_manager(self):
-        return _LazyProxy(self._registry, "gowa_manager")
+        return self._gowa_manager_proxy
 
     @property
     def gowa_client(self):
-        return _LazyProxy(self._registry, "gowa_client")
+        return self._gowa_client_proxy
 
     @property
     def agent_handler(self):
-        return _LazyProxy(self._registry, "agent_handler")
+        return self._agent_handler_proxy
 
     @property
     def ws_manager(self):
-        return _LazyProxy(self._registry, "ws_manager")
+        return self._ws_manager_proxy
 
     @property
     def state(self):
-        return _LazyProxy(self._registry, "state")
+        return self._state_proxy
 
     @property
     def statics_senditems_dir(self):
-        # We need a property that evaluates dynamically
-        class DirProxy:
-            def __init__(self, registry):
-                self._registry = registry
-            def __truediv__(self, other):
-                from server.tenant import current_tenant_slug
-                slug = current_tenant_slug.get()
-                ctx = self._registry.get_by_slug(slug)
-                return ctx.data_dir / "statics" / "senditems" / other
-            def mkdir(self, *args, **kwargs):
-                from server.tenant import current_tenant_slug
-                slug = current_tenant_slug.get()
-                ctx = self._registry.get_by_slug(slug)
-                (ctx.data_dir / "statics" / "senditems").mkdir(*args, **kwargs)
-        return DirProxy(self._registry)
-
+        return self._statics_senditems_dir_proxy
 
 
 # ── Factory (Single-Tenant — existing behavior) ──────────────────────────
