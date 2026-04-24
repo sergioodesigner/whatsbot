@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import mimetypes
 import random
 import re
 import shutil
@@ -175,6 +176,45 @@ def register_routes(app, deps):
             logger.warning("[Webhook] Failed to download media URL %s: %s", media_url, e)
             return None
 
+    def _download_media_from_message_id(
+        message_id: str,
+        fallback_ext: str = "bin",
+        original_filename: str = "",
+        original_media_type: str = "",
+    ) -> str | None:
+        """Download media using official GOWA message download endpoint."""
+        if not message_id:
+            return None
+        data, content_type = gowa_client.download_message_media(message_id)
+        if not data:
+            return None
+
+        ext = ""
+        if original_filename:
+            ext = Path(original_filename).suffix.lower().lstrip(".")
+        if not ext and content_type:
+            mime = content_type.split(";", 1)[0].strip().lower()
+            guessed = mimetypes.guess_extension(mime) or ""
+            ext = guessed.lstrip(".")
+        if not ext and original_media_type:
+            mime = str(original_media_type).split(";", 1)[0].strip().lower()
+            guessed = mimetypes.guess_extension(mime) or ""
+            ext = guessed.lstrip(".")
+        ext = re.sub(r"[^a-z0-9]", "", (ext or fallback_ext).lower()) or fallback_ext
+
+        safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", message_id)[:80]
+        filename = f"{int(time.time())}-{safe_id}.{ext}"
+        statics_media_dir = Path(settings.data_dir) / "statics" / "media"
+        statics_media_dir.mkdir(parents=True, exist_ok=True)
+        dest = statics_media_dir / filename
+        try:
+            dest.write_bytes(data)
+            logger.info("[Webhook] Media downloaded via /message/{id}/download -> %s", filename)
+            return f"statics/media/{filename}"
+        except Exception as e:
+            logger.warning("[Webhook] Failed to persist downloaded media for %s: %s", message_id, e)
+            return None
+
     def _media_exists(rel_path: str | None) -> bool:
         if not rel_path:
             return False
@@ -183,7 +223,13 @@ def register_routes(app, deps):
             return False
         return (Path(settings.data_dir) / clean).is_file()
 
-    def _resolve_media_field(raw_media, fallback_ext: str) -> str | None:
+    def _resolve_media_field(
+        raw_media,
+        fallback_ext: str,
+        message_id: str = "",
+        original_filename: str = "",
+        original_media_type: str = "",
+    ) -> str | None:
         """Resolve media field from webhook payload (path or URL)."""
         if not raw_media:
             return None
@@ -192,7 +238,19 @@ def register_routes(app, deps):
                 downloaded = _download_media_from_url(str(raw_media), fallback_ext=fallback_ext)
                 if downloaded:
                     return downloaded
-            return _sync_media_to_statics(raw_media)
+            resolved = _sync_media_to_statics(raw_media)
+            if resolved and _media_exists(resolved):
+                return resolved
+            if message_id:
+                downloaded = _download_media_from_message_id(
+                    message_id,
+                    fallback_ext=fallback_ext,
+                    original_filename=original_filename,
+                    original_media_type=original_media_type,
+                )
+                if downloaded:
+                    return downloaded
+            return resolved
         if isinstance(raw_media, dict):
             path_value = raw_media.get("path", "")
             if path_value:
@@ -201,7 +259,22 @@ def register_routes(app, deps):
                     return resolved
             url_value = raw_media.get("url", "") or raw_media.get("link", "") or raw_media.get("download_url", "")
             if url_value:
-                return _download_media_from_url(str(url_value), fallback_ext=fallback_ext)
+                downloaded = _download_media_from_url(str(url_value), fallback_ext=fallback_ext)
+                if downloaded:
+                    return downloaded
+            if message_id:
+                return _download_media_from_message_id(
+                    message_id,
+                    fallback_ext=fallback_ext,
+                    original_filename=(
+                        str(raw_media.get("filename", "") or raw_media.get("file_name", "")).strip()
+                        or original_filename
+                    ),
+                    original_media_type=(
+                        str(raw_media.get("mimetype", "") or raw_media.get("mime_type", "")).strip()
+                        or original_media_type
+                    ),
+                )
         return None
 
     # ── Group Mention Helpers ──────────────────────────────────────
@@ -747,30 +820,56 @@ def register_routes(app, deps):
         gif_path: str | None = None
 
         raw_image = data.get("image")
+        original_filename = str(data.get("original_filename", "")).strip()
+        original_media_type = str(data.get("original_media_type", "")).strip()
         if raw_image:
             if isinstance(raw_image, str):
-                image_path = _sync_media_to_statics(raw_image)
+                image_path = _resolve_media_field(
+                    raw_image, "jpg", message_id=msg_id,
+                    original_filename=original_filename,
+                    original_media_type=original_media_type,
+                )
             elif isinstance(raw_image, dict):
-                image_path = _resolve_media_field(raw_image, "jpg")
+                image_path = _resolve_media_field(
+                    raw_image, "jpg", message_id=msg_id,
+                    original_filename=original_filename,
+                    original_media_type=original_media_type,
+                )
                 if not text:
                     text = (raw_image.get("caption", "") or "").strip()
 
         raw_audio = data.get("audio")
         if raw_audio:
             if isinstance(raw_audio, str):
-                audio_path = _sync_media_to_statics(raw_audio)
+                audio_path = _resolve_media_field(
+                    raw_audio, "ogg", message_id=msg_id,
+                    original_filename=original_filename,
+                    original_media_type=original_media_type,
+                )
             elif isinstance(raw_audio, dict):
-                audio_path = _resolve_media_field(raw_audio, "ogg")
+                audio_path = _resolve_media_field(
+                    raw_audio, "ogg", message_id=msg_id,
+                    original_filename=original_filename,
+                    original_media_type=original_media_type,
+                )
 
         # WhatsApp GIFs may arrive under "video" with gif flags/mime.
         raw_video = data.get("video")
         if raw_video:
             if isinstance(raw_video, str):
-                candidate = _sync_media_to_statics(raw_video)
+                candidate = _resolve_media_field(
+                    raw_video, "mp4", message_id=msg_id,
+                    original_filename=original_filename,
+                    original_media_type=original_media_type,
+                )
                 if candidate and candidate.lower().endswith(".gif"):
                     gif_path = candidate
             elif isinstance(raw_video, dict):
-                candidate = _resolve_media_field(raw_video, "mp4")
+                candidate = _resolve_media_field(
+                    raw_video, "mp4", message_id=msg_id,
+                    original_filename=original_filename,
+                    original_media_type=original_media_type,
+                )
                 mime = str(raw_video.get("mimetype", raw_video.get("mime_type", ""))).lower()
                 is_gif = bool(
                     raw_video.get("is_gif")
@@ -791,9 +890,17 @@ def register_routes(app, deps):
         raw_vn = data.get("video_note")
         if raw_vn and not audio_path:
             if isinstance(raw_vn, str):
-                audio_path = _sync_media_to_statics(raw_vn)
+                audio_path = _resolve_media_field(
+                    raw_vn, "mp4", message_id=msg_id,
+                    original_filename=original_filename,
+                    original_media_type=original_media_type,
+                )
             elif isinstance(raw_vn, dict):
-                audio_path = _resolve_media_field(raw_vn, "mp4")
+                audio_path = _resolve_media_field(
+                    raw_vn, "mp4", message_id=msg_id,
+                    original_filename=original_filename,
+                    original_media_type=original_media_type,
+                )
 
         # For audio without text, set a placeholder
         if audio_path and not text:

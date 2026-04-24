@@ -416,6 +416,26 @@ class GOWAClient:
                 return results
         return []
 
+    def download_message_media(self, message_id: str) -> tuple[bytes | None, str]:
+        """Download media content for a specific message ID.
+
+        Uses GOWA endpoint GET /message/{message_id}/download.
+        Returns (content_bytes, content_type) or (None, "") on failure.
+        """
+        if not message_id:
+            return None, ""
+        if not self._device_ready:
+            self.ensure_device()
+        url = f"{self.base_url}/message/{message_id}/download"
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                resp = client.get(url, headers=self._headers)
+                resp.raise_for_status()
+                return resp.content, (resp.headers.get("content-type", "") or "")
+        except Exception as e:
+            logger.warning("[GOWA] download_message_media failed for %s: %s", message_id, e)
+            return None, ""
+
     # ── Phone Check ────────────────────────────────────────────────
 
     def check_phone(self, phone: str) -> dict:
