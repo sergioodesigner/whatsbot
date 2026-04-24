@@ -23,8 +23,18 @@ def register_routes(app, deps):
     state = deps.state
     settings = deps.settings
     statics_senditems_dir = deps.statics_senditems_dir
-    statics_media_dir = statics_senditems_dir.parent / "media"
-    statics_media_dir.mkdir(parents=True, exist_ok=True)
+
+    def _resolve_media_dirs() -> tuple[Path, Path]:
+        """Resolve tenant-aware media directories at request time.
+
+        In SaaS mode, deps.statics_senditems_dir is a tenant proxy and cannot be
+        dereferenced during route registration (no tenant context yet).
+        """
+        senditems_dir = Path(statics_senditems_dir)
+        senditems_dir.mkdir(parents=True, exist_ok=True)
+        media_dir = senditems_dir.parent / "media"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        return senditems_dir, media_dir
 
     def _normalize_media_path(path: str | None) -> str:
         """Normalize legacy media paths into a stable relative path."""
@@ -382,10 +392,11 @@ def register_routes(app, deps):
         caption: str = Form(""),
     ):
         """Send an image to a contact (operator-initiated)."""
+        senditems_dir, media_dir = _resolve_media_dirs()
         suffix = Path(image.filename or "img.png").suffix or ".png"
         media_name = f"{int(time.time() * 1000)}{suffix}"
-        dest = statics_senditems_dir / media_name
-        stable_dest = statics_media_dir / media_name
+        dest = senditems_dir / media_name
+        stable_dest = media_dir / media_name
         content = await image.read()
         dest.write_bytes(content)
         # Keep a stable chat copy under statics/media for history rendering.
@@ -447,10 +458,11 @@ def register_routes(app, deps):
         audio: UploadFile = File(...),
     ):
         """Send an audio file to a contact (operator-initiated)."""
+        senditems_dir, media_dir = _resolve_media_dirs()
         suffix = Path(audio.filename or "voice.ogg").suffix or ".ogg"
         media_name = f"{int(time.time() * 1000)}{suffix}"
-        dest = statics_senditems_dir / media_name
-        stable_dest = statics_media_dir / media_name
+        dest = senditems_dir / media_name
+        stable_dest = media_dir / media_name
         content = await audio.read()
         dest.write_bytes(content)
         try:
