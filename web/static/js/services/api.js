@@ -14,11 +14,19 @@ function _getSuperadminToken() {
     || '';
 }
 
+function _getSuperadminTenant() {
+  return sessionStorage.getItem('whatsbot_superadmin_tenant')
+    || localStorage.getItem('whatsbot_superadmin_tenant')
+    || '';
+}
+
 function _authHeaders(headers = {}) {
   const token = _getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const superadminToken = _getSuperadminToken();
   if (superadminToken) headers['X-Superadmin-Token'] = superadminToken;
+  const superadminTenant = _getSuperadminTenant();
+  if (superadminTenant) headers['X-Superadmin-Tenant'] = superadminTenant;
   return headers;
 }
 

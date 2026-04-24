@@ -31,10 +31,16 @@ function contactIdFromPath() {
 function bootstrapSuperadminDelegation() {
   const params = new URLSearchParams(window.location.search);
   const delegatedToken = (params.get('sa_token') || '').trim();
+  const delegatedTenant = (params.get('sa_tenant') || '').trim();
   if (delegatedToken) {
     sessionStorage.setItem('whatsbot_superadmin_token', delegatedToken);
+    if (delegatedTenant) {
+      sessionStorage.setItem('whatsbot_superadmin_tenant', delegatedTenant);
+    }
     localStorage.removeItem('whatsbot_superadmin_token');
+    localStorage.removeItem('whatsbot_superadmin_tenant');
     params.delete('sa_token');
+    params.delete('sa_tenant');
   }
   const qs = params.toString();
   const cleanUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash || ''}`;
@@ -288,7 +294,9 @@ function AuthGate() {
   function handleLogout() {
     localStorage.removeItem('whatsbot_token');
     sessionStorage.removeItem('whatsbot_superadmin_token');
+    sessionStorage.removeItem('whatsbot_superadmin_tenant');
     localStorage.removeItem('whatsbot_superadmin_token');
+    localStorage.removeItem('whatsbot_superadmin_tenant');
     setAuthState('login');
   }
 

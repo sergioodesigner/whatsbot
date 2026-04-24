@@ -123,7 +123,7 @@
         const token = delegated.token || "";
         if (!token) throw new Error("Token delegado não retornado.");
         const separator = baseUrl.includes("?") ? "&" : "?";
-        const url = `${baseUrl}${separator}sa_token=${encodeURIComponent(token)}&sa_embed=1`;
+        const url = `${baseUrl}${separator}sa_token=${encodeURIComponent(token)}&sa_tenant=${encodeURIComponent(slug)}&sa_embed=1`;
         openModal(`${slug} • ${label}`, url);
       } catch (err) {
         setStatus(`Falha ao abrir ${slug}: ${err.message}`, true);

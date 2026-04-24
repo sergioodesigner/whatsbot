@@ -412,13 +412,23 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
                 return bearer
         return (request.query_params.get("sa_token", "") or "").strip()
 
+    def _delegated_tenant_slug(request: Request) -> str:
+        from server.tenant import current_tenant_slug
+        slug = (current_tenant_slug.get() or "").strip()
+        if slug and slug not in ("default", "__superadmin__"):
+            return slug
+        header_slug = (request.headers.get("x-superadmin-tenant", "") or "").strip().lower()
+        if header_slug:
+            return header_slug
+        query_slug = (request.query_params.get("sa_tenant", "") or "").strip().lower()
+        return query_slug
+
     def _has_valid_superadmin_token(request: Request) -> bool:
         token = _extract_superadmin_token(request)
         if not token:
             return False
-        from server.tenant import current_tenant_slug
-        slug = current_tenant_slug.get()
-        if not slug or slug in ("default", "__superadmin__"):
+        slug = _delegated_tenant_slug(request)
+        if not slug:
             return False
         for admin_user in tenant_repo.list_superadmins():
             pwd_hash = admin_user.get("password_hash", "")
@@ -473,6 +483,14 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
 
         # If a delegated token is being used, lock navigation to delegated-safe paths.
         if token_candidate and _has_valid_superadmin_token(request):
+            delegated_slug = _delegated_tenant_slug(request)
+            from server.tenant import current_tenant_slug
+            current_slug = (current_tenant_slug.get() or "").strip()
+            if current_slug == "__superadmin__" or not delegated_slug:
+                return JSONResponse(
+                    {"ok": False, "error": "Token delegado inválido para este domínio."},
+                    status_code=403,
+                )
             delegated_spa = path in _DELEGATED_ALLOWED_SPA_PATHS
             delegated_api = any(path.startswith(prefix) for prefix in _DELEGATED_ALLOWED_API_PREFIXES)
             if not delegated_spa and not delegated_api:
