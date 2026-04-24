@@ -2,10 +2,14 @@
 
 import asyncio
 import logging
+import re
 import shutil
 import time
+from html import unescape
 from pathlib import Path
+from urllib.parse import urlparse
 
+import httpx
 from fastapi import File, Form, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from gowa.client import GOWASendError, extract_msg_id
@@ -35,6 +39,68 @@ def register_routes(app, deps):
         media_dir = senditems_dir.parent / "media"
         media_dir.mkdir(parents=True, exist_ok=True)
         return senditems_dir, media_dir
+
+    def _extract_meta(html: str, prop: str) -> str:
+        patterns = [
+            rf'<meta[^>]+property=["\']{re.escape(prop)}["\'][^>]+content=["\']([^"\']+)["\']',
+            rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']{re.escape(prop)}["\']',
+            rf'<meta[^>]+name=["\']{re.escape(prop)}["\'][^>]+content=["\']([^"\']+)["\']',
+            rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']{re.escape(prop)}["\']',
+        ]
+        for p in patterns:
+            m = re.search(p, html, re.IGNORECASE)
+            if m:
+                return unescape(m.group(1).strip())
+        return ""
+
+    @app.get("/api/link-preview")
+    async def get_link_preview(url: str = ""):
+        """Fetch a lightweight OpenGraph preview for a URL."""
+        url = (url or "").strip()
+        if not url:
+            return _err("URL obrigatória.")
+        if not url.startswith(("http://", "https://")):
+            return _err("URL inválida.")
+
+        parsed = urlparse(url)
+        if not parsed.netloc:
+            return _err("URL inválida.")
+
+        try:
+            async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+                resp = await client.get(
+                    url,
+                    headers={
+                        "User-Agent": (
+                            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/124.0 Safari/537.36"
+                        )
+                    },
+                )
+            ctype = (resp.headers.get("content-type", "") or "").lower()
+            if "text/html" not in ctype:
+                return _ok({"url": url, "site_name": parsed.netloc, "title": parsed.netloc})
+
+            html = resp.text[:300000]
+            title = _extract_meta(html, "og:title")
+            description = _extract_meta(html, "og:description") or _extract_meta(html, "description")
+            image = _extract_meta(html, "og:image")
+            site_name = _extract_meta(html, "og:site_name") or parsed.netloc
+            if not title:
+                t = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+                title = unescape(t.group(1).strip()) if t else parsed.netloc
+
+            return _ok({
+                "url": str(resp.url),
+                "title": title[:200],
+                "description": description[:300] if description else "",
+                "image": image,
+                "site_name": site_name[:120],
+            })
+        except Exception as e:
+            logger.warning("[LinkPreview] Failed for %s: %s", url, e)
+            return _err("Não foi possível carregar prévia do link.", status=502)
 
     def _normalize_media_path(path: str | None) -> str:
         """Normalize legacy media paths into a stable relative path."""

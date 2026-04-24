@@ -1,4 +1,5 @@
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -69,11 +70,17 @@ class GOWAManager:
         if sys.platform == "win32":
             creation_flags = subprocess.CREATE_NO_WINDOW
 
+        # Ensure received media is materialized on disk so webhook payload paths
+        # (e.g., statics/media/...) are actually readable by the panel.
+        child_env = dict(os.environ)
+        child_env["WHATSAPP_AUTO_DOWNLOAD_MEDIA"] = "true"
+
         self._process = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             cwd=str(self.data_dir),
+            env=child_env,
             creationflags=creation_flags,
         )
         self._running = True

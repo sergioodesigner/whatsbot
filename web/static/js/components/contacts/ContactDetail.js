@@ -1,7 +1,7 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
-import { sendMessage, retrySend, sendImage, sendAudio, sendPresence } from '../../services/api.js';
+import { sendMessage, retrySend, sendImage, sendAudio, sendPresence, getLinkPreview } from '../../services/api.js';
 import { SendIcon, BackArrowIcon, DefaultAvatar, GroupAvatar, EmojiIcon, AttachIcon, MicIcon, SingleCheckIcon, DoubleCheckIcon, ClockIcon, FailedIcon, RetryIcon, StopIcon } from './icons.js';
 import { formatBubbleTime } from './utils.js';
 import { formatWhatsApp } from '../../utils/formatWhatsApp.js';
@@ -40,6 +40,11 @@ function parseGroupMessage(content) {
   return { sender: m[1].trim(), text: m[2] || '' };
 }
 
+function extractFirstUrl(text) {
+  const m = String(text || '').match(/https?:\/\/[^\s<>"']+/i);
+  return m ? m[0] : '';
+}
+
 // ── Contact Detail (WhatsApp Web chat panel) ─────────────────────
 
 export function ContactDetail({ phone, onBack, messages, info, contact, onAvatarClick, contactTyping, setContactData, globalTags }) {
@@ -48,6 +53,7 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
   const [recording, setRecording] = useState(false);
   const [recordDuration, setRecordDuration] = useState(0);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [linkPreviews, setLinkPreviews] = useState({});
   // pendingMedia: { type: 'image'|'audio', file, blob, filename, previewUrl }
   const [pendingMedia, setPendingMedia] = useState(null);
   const chatRef = useRef(null);
@@ -56,6 +62,7 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
   const mediaRecorderRef = useRef(null);
   const recordTimerRef = useRef(null);
   const presenceTimerRef = useRef(null);
+  const isGroup = contact && contact.is_group;
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
@@ -63,6 +70,33 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
 
   useEffect(() => { setInput(''); }, [phone]);
   useEffect(() => { setShowEmojiPicker(false); }, [phone]);
+  useEffect(() => { setLinkPreviews({}); }, [phone]);
+
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+    const urls = new Set();
+    for (const m of messages) {
+      if (m.media_type) continue;
+      const baseText = (isGroup && m.role === 'user')
+        ? parseGroupMessage(m.content).text
+        : (m.content || '');
+      const url = extractFirstUrl(baseText);
+      if (url) urls.add(url);
+    }
+    urls.forEach((url) => {
+      if (linkPreviews[url]) return;
+      setLinkPreviews(prev => ({ ...prev, [url]: { loading: true } }));
+      getLinkPreview(url).then(res => {
+        if (res.ok) {
+          setLinkPreviews(prev => ({ ...prev, [url]: { loading: false, data: res.data } }));
+        } else {
+          setLinkPreviews(prev => ({ ...prev, [url]: { loading: false, error: true } }));
+        }
+      }).catch(() => {
+        setLinkPreviews(prev => ({ ...prev, [url]: { loading: false, error: true } }));
+      });
+    });
+  }, [messages, phone, isGroup]);
 
   // Auto-focus message input when opening a chat
   useEffect(() => {
@@ -329,7 +363,6 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
     `;
   }
 
-  const isGroup = contact && contact.is_group;
   const canSend = contact ? (contact.can_send !== false) : true;
   const rawName = info && info.name;
   const isAutoName = !isGroup && rawName && rawName.startsWith('~');
@@ -492,7 +525,28 @@ export function ContactDetail({ phone, onBack, messages, info, contact, onAvatar
                       ${msgText && msgText !== '[Áudio recebido]' && msgText !== '[Áudio]' && !msgText.startsWith('[Transcrição do áudio]')
                         ? html`<span class="block text-[12px] text-wa-secondary italic" dangerouslySetInnerHTML=${{ __html: formatWhatsApp(msgText) }}></span>`
                         : null}
-                    ` : html`<span dangerouslySetInnerHTML=${{ __html: formatWhatsApp(msgText) }}></span>`}
+                    ` : html`
+                      <span dangerouslySetInnerHTML=${{ __html: formatWhatsApp(msgText) }}></span>
+                      ${(() => {
+                        const url = extractFirstUrl(msgText);
+                        const preview = url ? linkPreviews[url] : null;
+                        if (!preview || preview.loading || !preview.data) return null;
+                        const p = preview.data;
+                        return html`
+                          <a href=${p.url || url} target="_blank" rel="noopener noreferrer"
+                             class="block mt-[6px] rounded-[8px] border border-wa-border overflow-hidden no-underline bg-white/70">
+                            ${p.image ? html`
+                              <img src=${p.image} alt="preview" class="w-full max-h-[160px] object-cover" loading="lazy" />
+                            ` : null}
+                            <div class="p-[8px]">
+                              <div class="text-[11px] text-wa-secondary">${p.site_name || ''}</div>
+                              <div class="text-[13px] text-wa-text font-medium leading-[16px]">${p.title || url}</div>
+                              ${p.description ? html`<div class="text-[12px] text-wa-secondary leading-[15px] mt-[2px]">${p.description}</div>` : null}
+                            </div>
+                          </a>
+                        `;
+                      })()}
+                    `}
                     <span class="float-right ml-[8px] mt-[4px] text-[11px] leading-[15px] whitespace-nowrap text-wa-secondary">
                       ${!isUser ? (() => {
                         if (isFailed) return html`<${FailedIcon} />${!m.media_type && m._localId ? html`<${RetryIcon} onClick=${() => handleRetry(m._localId, m.content)} />` : ''}`;

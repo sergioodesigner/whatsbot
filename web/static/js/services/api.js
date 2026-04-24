@@ -156,6 +156,10 @@ export async function sendPresence(phone, action = 'start') {
   return request('POST', `/api/contacts/${encodeURIComponent(phone)}/presence`, { action });
 }
 
+export async function getLinkPreview(url) {
+  return request('GET', `/api/link-preview?url=${encodeURIComponent(url)}`);
+}
+
 export async function checkPhone(phone) {
   return request('POST', '/api/contacts/check-phone', { phone });
 }
