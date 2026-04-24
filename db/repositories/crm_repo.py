@@ -83,6 +83,27 @@ def get_deal(deal_id: int) -> dict | None:
     return item
 
 
+def get_deal_by_phone(phone: str) -> dict | None:
+    _ensure_schema()
+    clean_phone = str(phone or "").strip()
+    if not clean_phone or not _is_crm_eligible_phone(clean_phone):
+        return None
+    conn = get_db()
+    row = conn.execute(
+        """
+        SELECT id, contact_id, contact_phone, title, stage, origin, potential_value, owner, notes, created_at, updated_at
+        FROM crm_deals
+        WHERE contact_phone = ?
+        """,
+        (clean_phone,),
+    ).fetchone()
+    if not row:
+        return None
+    item = dict(row)
+    item["contact"] = _contact_snapshot(item["contact_phone"])
+    return item
+
+
 def upsert_deal(data: dict) -> dict:
     _ensure_schema()
     conn = get_db()

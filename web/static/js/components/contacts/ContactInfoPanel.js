@@ -27,6 +27,23 @@ export function ContactInfoPanel({ phone, info, contactTags, globalTags, onGloba
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const tagDropdownRef = useRef(null);
 
+  const crm = (info && info.crm) || null;
+  const stageLabels = {
+    novo: 'Novo',
+    em_atendimento: 'Em atendimento',
+    proposta: 'Proposta',
+    fechado_ganho: 'Fechado (ganho)',
+    perdido: 'Perdido',
+  };
+  const originLabel = (() => {
+    const raw = String(crm?.origin || '');
+    if (!raw) return '-';
+    if (raw === 'whatsapp_auto') return 'WhatsApp (automático)';
+    if (raw === 'manual') return 'Manual';
+    if (raw.startsWith('manual:')) return `Manual (${raw.slice(7) || 'outra origem'})`;
+    return raw;
+  })();
+
   // Sync form when info/phone changes
   useEffect(() => {
     if (info) {
@@ -157,6 +174,20 @@ export function ContactInfoPanel({ phone, info, contactTags, globalTags, onGloba
 
           <!-- Fields -->
           <div class="bg-wa-bg px-6 py-4 space-y-4">
+            <div class="bg-wa-panel rounded-[10px] border border-wa-border p-3">
+              <div class="text-wa-iconActive text-[13px] font-medium mb-2">Resumo CRM</div>
+              ${crm ? html`
+                <div class="space-y-1.5 text-[13px] text-wa-text">
+                  <div><span class="text-wa-secondary">Etapa:</span> ${stageLabels[crm.stage] || crm.stage || '-'}</div>
+                  <div><span class="text-wa-secondary">Valor potencial:</span> R$ ${Number(crm.potential_value || 0).toFixed(2)}</div>
+                  <div><span class="text-wa-secondary">Responsável:</span> ${crm.owner || '-'}</div>
+                  <div><span class="text-wa-secondary">Origem:</span> ${originLabel}</div>
+                </div>
+              ` : html`
+                <div class="text-[13px] text-wa-secondary">Sem oportunidade no CRM para este contato.</div>
+              `}
+            </div>
+
             ${fields.map(f => html`
               <div key=${f.key}>
                 <label class="text-wa-iconActive text-[13px] font-medium block mb-1">${f.label}</label>

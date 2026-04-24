@@ -481,7 +481,9 @@ export function Contacts({ newMessage, chatPresence, contactInfoUpdated, tagsCha
   }, [newMessage]);
 
   const messages = contactData ? contactData.messages || [] : [];
-  const info = contactData ? contactData.info || {} : {};
+  const info = contactData
+    ? { ...(contactData.info || {}), crm: contactData.crm || null }
+    : {};
 
   const autoReply = config ? config.auto_reply : false;
   const handleToggleAutoReply = useCallback(async (newValue) => {

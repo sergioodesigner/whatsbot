@@ -160,36 +160,41 @@ export function CrmBoard() {
       </div>
 
       ${selectedDeal ? html`
-        <div class="bg-white rounded-xl border border-wa-border p-4 space-y-3">
-          <div class="flex items-center justify-between">
-            <h3 class="font-semibold">Oportunidade: ${selectedDeal.title || selectedDeal.contact?.name || selectedDeal.contact_phone}</h3>
-            <button class="text-sm text-wa-secondary hover:underline" onClick=${() => setSelectedDeal(null)}>Fechar</button>
-          </div>
-          <div class="text-sm text-wa-secondary">
-            Contato: ${selectedDeal.contact?.name || '-'} (${selectedDeal.contact?.phone || selectedDeal.contact_phone})
-          </div>
-          <div class="text-sm text-wa-secondary">
-            Origem: ${originLabel(selectedDeal.origin)}
-          </div>
-          <div class="text-sm text-wa-secondary">
-            Observações do contato: ${(selectedDeal.contact?.observations || []).slice(0, 2).join(' | ') || 'Sem observações'}
-          </div>
-          <form onSubmit=${createTask} class="flex gap-2">
-            <input value=${taskTitle} onInput=${(e) => setTaskTitle(e.target.value)} class="border rounded px-3 py-2 flex-1" placeholder="Nova tarefa" />
-            <button class="border rounded px-3 py-2">Adicionar tarefa</button>
-          </form>
-          <div class="space-y-2">
-            ${tasks.map((t) => html`
-              <label class="flex items-center justify-between border rounded px-3 py-2 text-sm">
-                <span class=${t.done ? 'line-through text-wa-secondary' : ''}>${t.title}</span>
-                <button class="text-xs border rounded px-2 py-1" onClick=${() => toggleTask(t)} type="button">
-                  ${t.done ? 'Reabrir' : 'Concluir'}
-                </button>
-              </label>
-            `)}
-          </div>
-          <div class="text-xs text-wa-secondary">
-            Total de oportunidades no funil: ${allDeals.length}. Última atualização: ${dateBr(Date.now() / 1000)}.
+        <div
+          class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+          onClick=${(e) => { if (e.target === e.currentTarget) setSelectedDeal(null); }}
+        >
+          <div class="bg-white rounded-xl border border-wa-border w-full max-w-3xl max-h-[85vh] overflow-auto p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold">Oportunidade: ${selectedDeal.title || selectedDeal.contact?.name || selectedDeal.contact_phone}</h3>
+              <button class="text-sm text-wa-secondary hover:underline" onClick=${() => setSelectedDeal(null)}>Fechar</button>
+            </div>
+            <div class="text-sm text-wa-secondary">
+              Contato: ${selectedDeal.contact?.name || '-'} (${selectedDeal.contact?.phone || selectedDeal.contact_phone})
+            </div>
+            <div class="text-sm text-wa-secondary">
+              Origem: ${originLabel(selectedDeal.origin)}
+            </div>
+            <div class="text-sm text-wa-secondary">
+              Observações do contato: ${(selectedDeal.contact?.observations || []).slice(0, 2).join(' | ') || 'Sem observações'}
+            </div>
+            <form onSubmit=${createTask} class="flex gap-2">
+              <input value=${taskTitle} onInput=${(e) => setTaskTitle(e.target.value)} class="border rounded px-3 py-2 flex-1" placeholder="Nova tarefa" />
+              <button class="border rounded px-3 py-2">Adicionar tarefa</button>
+            </form>
+            <div class="space-y-2">
+              ${tasks.map((t) => html`
+                <label class="flex items-center justify-between border rounded px-3 py-2 text-sm">
+                  <span class=${t.done ? 'line-through text-wa-secondary' : ''}>${t.title}</span>
+                  <button class="text-xs border rounded px-2 py-1" onClick=${() => toggleTask(t)} type="button">
+                    ${t.done ? 'Reabrir' : 'Concluir'}
+                  </button>
+                </label>
+              `)}
+            </div>
+            <div class="text-xs text-wa-secondary">
+              Total de oportunidades no funil: ${allDeals.length}. Última atualização: ${dateBr(Date.now() / 1000)}.
+            </div>
           </div>
         </div>
       ` : null}

@@ -14,7 +14,7 @@ from fastapi import File, Form, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from gowa.client import GOWASendError, extract_msg_id
 
-from db.repositories import contact_repo, message_repo
+from db.repositories import contact_repo, message_repo, crm_repo
 from server.helpers import _ok, _err
 
 logger = logging.getLogger(__name__)
@@ -280,6 +280,8 @@ def register_routes(app, deps):
             data["messages"] = messages
             # Load usage for the full response
             data["usage"] = []
+            # CRM snapshot for contact quick visibility in chat panel
+            data["crm"] = crm_repo.get_deal_by_phone(phone)
             return data, msg_ids
         data, msg_ids = await asyncio.to_thread(_load)
         if data is None:
