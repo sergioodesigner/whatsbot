@@ -2,7 +2,10 @@ import { h, render } from 'preact';
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { Dashboard } from './components/Dashboard.js';
+import { Sandbox } from './components/Sandbox.js';
 import { Contacts } from './components/Contacts.js';
+import { CostsDashboard } from './components/CostsDashboard.js';
+import { Executions } from './components/Executions.js';
 import { LoginScreen } from './components/LoginScreen.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { useConfig } from './hooks/useConfig.js';
@@ -11,8 +14,8 @@ import { playTransferAlert } from './utils/alertSound.js';
 
 const html = htm.bind(h);
 
-const ROUTES = { '/': 'contacts', '/dashboard': 'dashboard' };
-const TAB_PATHS = { contacts: '/', dashboard: '/dashboard' };
+const ROUTES = { '/': 'contacts', '/dashboard': 'dashboard', '/sandbox': 'sandbox', '/costs': 'costs', '/executions': 'executions' };
+const TAB_PATHS = { contacts: '/', dashboard: '/dashboard', sandbox: '/sandbox', costs: '/costs', executions: '/executions' };
 
 function tabFromPath() {
   const path = window.location.pathname;
@@ -24,6 +27,19 @@ function contactIdFromPath() {
   const m = window.location.pathname.match(/^\/contacts\/(\d+)$/);
   return m ? parseInt(m[1], 10) : null;
 }
+
+function bootstrapSuperadminDelegation() {
+  const params = new URLSearchParams(window.location.search);
+  const delegatedToken = (params.get('sa_token') || '').trim();
+  if (!delegatedToken) return;
+  localStorage.setItem('whatsbot_superadmin_token', delegatedToken);
+  params.delete('sa_token');
+  const qs = params.toString();
+  const cleanUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash || ''}`;
+  window.history.replaceState(null, '', cleanUrl);
+}
+
+bootstrapSuperadminDelegation();
 
 function GearMenu({ tab, onTabChange, hasPassword, onLogout }) {
   const [open, setOpen] = useState(false);
@@ -188,7 +204,20 @@ function App({ onLogout, hasPassword }) {
             </div>`
           : tab === 'contacts'
             ? html`<${Contacts} newMessage=${newMessage} chatPresence=${chatPresence} contactInfoUpdated=${contactInfoUpdated} tagsChanged=${tagsChanged} contactTagsUpdated=${contactTagsUpdated} contactAiToggled=${contactAiToggled} messagesRead=${messagesRead} messageStatus=${messageStatus} initialContactId=${initialContactId} wsConnected=${wsConnected} config=${config} onConfigSave=${save} />`
-            : html`<${Contacts} newMessage=${newMessage} chatPresence=${chatPresence} contactInfoUpdated=${contactInfoUpdated} tagsChanged=${tagsChanged} contactTagsUpdated=${contactTagsUpdated} contactAiToggled=${contactAiToggled} messagesRead=${messagesRead} messageStatus=${messageStatus} initialContactId=${initialContactId} wsConnected=${wsConnected} config=${config} onConfigSave=${save} />`
+            : tab === 'costs'
+              ? html`<div class="max-w-5xl mx-auto p-4">
+                  <${PageHeader} title="Custos de IA" onBack=${() => setTab('contacts')} />
+                  <${CostsDashboard} />
+                </div>`
+              : tab === 'executions'
+                ? html`<div class="max-w-5xl mx-auto p-4 h-full">
+                    <${PageHeader} title="Execuções" onBack=${() => setTab('contacts')} />
+                    <${Executions} />
+                  </div>`
+                : html`<div class="max-w-5xl mx-auto p-4">
+                    <${PageHeader} title="Sandbox" onBack=${() => setTab('contacts')} />
+                    <${Sandbox} />
+                  </div>`
         }
       </main>
     </div>
@@ -229,6 +258,7 @@ function AuthGate() {
 
   function handleLogout() {
     localStorage.removeItem('whatsbot_token');
+    localStorage.removeItem('whatsbot_superadmin_token');
     setAuthState('login');
   }
 

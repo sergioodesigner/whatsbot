@@ -80,7 +80,8 @@
       if (parts.length < 2) return null;
       const baseDomain = parts.slice(1).join(".");
       const protocol = window.location.protocol || "https:";
-      return `${protocol}//${slug}.${baseDomain}${path}`;
+      const tokenQuery = adminToken ? `?sa_token=${encodeURIComponent(adminToken)}` : "";
+      return `${protocol}//${slug}.${baseDomain}${path}${tokenQuery}`;
     }
 
     async function api(path, options = {}) {

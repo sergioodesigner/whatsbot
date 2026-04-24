@@ -8,9 +8,15 @@ function _getToken() {
   return localStorage.getItem('whatsbot_token') || '';
 }
 
+function _getSuperadminToken() {
+  return localStorage.getItem('whatsbot_superadmin_token') || '';
+}
+
 function _authHeaders(headers = {}) {
   const token = _getToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const superadminToken = _getSuperadminToken();
+  if (superadminToken) headers['X-Superadmin-Token'] = superadminToken;
   return headers;
 }
 

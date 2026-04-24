@@ -7,6 +7,7 @@ Supports two modes:
 
 import asyncio
 import dataclasses
+import hmac
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -21,6 +22,8 @@ from server.helpers import _get_web_dir
 from server.state import MemoryLogHandler, ConnectionManager, AppState
 from server.background import start_gowa_task, status_poll_loop, qr_poll_loop, avatar_fetch_task
 from server.routes import logs, sandbox, config, whatsapp, websocket, usage, contacts, webhook, auth, tags, executions, update
+from server.auth import generate_token
+from db.repositories import tenant_repo
 
 logger = logging.getLogger(__name__)
 
@@ -393,6 +396,32 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
         "/api/admin/setup", "/api/admin/login", "/health",
     )
     _SPA_PATHS = {"/", "/dashboard", "/sandbox", "/costs", "/executions"}
+    _SUPERADMIN_ONLY_SPA_PATHS = {"/sandbox", "/costs", "/executions"}
+    _SUPERADMIN_ONLY_API_PREFIXES = ("/api/sandbox", "/api/usage", "/api/executions")
+
+    def _extract_superadmin_token(request: Request) -> str:
+        token = (request.headers.get("x-superadmin-token", "") or "").strip()
+        if token:
+            return token
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            bearer = auth_header[7:].strip()
+            if bearer:
+                return bearer
+        return (request.query_params.get("sa_token", "") or "").strip()
+
+    def _has_valid_superadmin_token(request: Request) -> bool:
+        token = _extract_superadmin_token(request)
+        if not token:
+            return False
+        for admin_user in tenant_repo.list_superadmins():
+            expected = generate_token(
+                admin_user.get("password_hash", ""),
+                admin_user.get("salt", ""),
+            )
+            if expected and hmac.compare_digest(token, expected):
+                return True
+        return False
 
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
@@ -412,6 +441,19 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
                 status_code=404,
             )
 
+        superadmin_delegated = False
+
+        # Sandbox/Costs/Executions are restricted to superadmin delegated access.
+        if path in _SUPERADMIN_ONLY_SPA_PATHS or any(
+            path.startswith(prefix) for prefix in _SUPERADMIN_ONLY_API_PREFIXES
+        ):
+            if not _has_valid_superadmin_token(request):
+                return JSONResponse(
+                    {"ok": False, "error": "Acesso restrito ao Superadmin."},
+                    status_code=403,
+                )
+            superadmin_delegated = True
+
         if path in _SPA_PATHS or path.startswith(("/contacts/",)):
             return await call_next(request)
         for prefix in _AUTH_EXEMPT_PREFIXES:
@@ -423,7 +465,7 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
             return await call_next(request)
 
         # Tenant auth
-        if path.startswith("/api/"):
+        if path.startswith("/api/") and not superadmin_delegated:
             try:
                 settings = deps.settings
                 if auth_required(settings):
