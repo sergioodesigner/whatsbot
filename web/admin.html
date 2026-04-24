@@ -75,6 +75,14 @@
         : "text-sm mt-3 text-slate-700";
     }
 
+    function tenantLink(slug, path) {
+      const parts = window.location.host.split(".");
+      if (parts.length < 2) return null;
+      const baseDomain = parts.slice(1).join(".");
+      const protocol = window.location.protocol || "https:";
+      return `${protocol}//${slug}.${baseDomain}${path}`;
+    }
+
     async function api(path, options = {}) {
       const headers = Object.assign(
         { "Content-Type": "application/json" },
@@ -135,15 +143,31 @@
           tenantsEl.innerHTML = "<p>Nenhum tenant cadastrado ainda.</p>";
           return;
         }
-        const rows = tenants.map((t) => `
+        const rows = tenants.map((t) => {
+          const dashboardUrl = tenantLink(t.slug, "/dashboard");
+          const costsUrl = tenantLink(t.slug, "/costs");
+          const executionsUrl = tenantLink(t.slug, "/executions");
+          const sandboxUrl = tenantLink(t.slug, "/sandbox");
+          const links = [dashboardUrl, costsUrl, executionsUrl, sandboxUrl].every(Boolean)
+            ? `
+              <a class="text-blue-700 hover:underline mr-3" href="${dashboardUrl}" target="_blank" rel="noopener noreferrer">Painel</a>
+              <a class="text-blue-700 hover:underline mr-3" href="${costsUrl}" target="_blank" rel="noopener noreferrer">Custos</a>
+              <a class="text-blue-700 hover:underline mr-3" href="${executionsUrl}" target="_blank" rel="noopener noreferrer">Execuções</a>
+              <a class="text-blue-700 hover:underline" href="${sandboxUrl}" target="_blank" rel="noopener noreferrer">Sandbox</a>
+            `
+            : '<span class="text-slate-400">Host inválido para links por subdomínio</span>';
+
+          return `
           <tr class="border-b">
             <td class="py-2 pr-4 font-medium">${t.name}</td>
             <td class="py-2 pr-4">${t.slug}</td>
             <td class="py-2 pr-4">${t.status}</td>
             <td class="py-2 pr-4">${t.whatsapp_connected ? "Sim" : "Nao"}</td>
             <td class="py-2 pr-4">${t.msg_count}</td>
+            <td class="py-2 pr-4 whitespace-nowrap">${links}</td>
           </tr>
-        `).join("");
+        `;
+        }).join("");
         tenantsEl.innerHTML = `
           <table class="w-full text-left">
             <thead>
@@ -153,6 +177,7 @@
                 <th class="py-2 pr-4">Status</th>
                 <th class="py-2 pr-4">WhatsApp</th>
                 <th class="py-2 pr-4">Mensagens</th>
+                <th class="py-2 pr-4">Ações por empresa</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
