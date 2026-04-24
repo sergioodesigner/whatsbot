@@ -112,6 +112,10 @@
           <input id="tenant-api-enabled" type="checkbox" class="w-4 h-4" />
           Permitir API e modelos para esta empresa
         </label>
+        <label class="inline-flex items-center gap-2 text-sm">
+          <input id="tenant-crm-enabled" type="checkbox" class="w-4 h-4" />
+          Habilitar módulo CRM para esta empresa
+        </label>
         <button id="save-tenant-api" class="bg-blue-700 text-white px-4 py-2 rounded">Salvar API</button>
       </div>
 
@@ -387,6 +391,7 @@
       document.getElementById("tenant-audio-model").value = data.audio_model || "";
       document.getElementById("tenant-image-model").value = data.image_model || "";
       document.getElementById("tenant-max-executions").value = data.max_executions ?? 200;
+      document.getElementById("tenant-crm-enabled").checked = data.crm_enabled !== false;
     }
 
     function dateInputFromTs(ts) {
@@ -633,6 +638,7 @@
             audio_model: document.getElementById("tenant-audio-model").value.trim(),
             image_model: document.getElementById("tenant-image-model").value.trim(),
             max_executions: parseInt(document.getElementById("tenant-max-executions").value || "200", 10),
+            crm_enabled: document.getElementById("tenant-crm-enabled").checked,
           }),
         });
         await Promise.all([loadTenants(), loadAiPolicy()]);

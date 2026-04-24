@@ -45,6 +45,15 @@ def register_routes(app, deps):
             tenant_enabled = True
         return global_enabled, tenant_enabled, global_enabled and tenant_enabled
 
+    def _crm_policy() -> bool:
+        slug = current_tenant_slug.get()
+        try:
+            if slug and slug not in ("default", "__superadmin__"):
+                return bool(master_policy_repo.get_tenant(slug, "crm_enabled", True))
+        except RuntimeError:
+            return True
+        return True
+
     @app.get("/api/config")
     async def get_config():
         global_enabled, tenant_enabled, effective_enabled = _api_models_policy()
@@ -69,6 +78,7 @@ def register_routes(app, deps):
             "api_models_globally_enabled": global_enabled,
             "api_models_enabled": tenant_enabled,
             "api_models_effective_enabled": effective_enabled,
+            "crm_enabled": _crm_policy(),
         })
 
     @app.put("/api/config")

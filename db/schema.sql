@@ -101,3 +101,30 @@ CREATE TABLE IF NOT EXISTS execution_steps (
     ts           REAL    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_step_exec ON execution_steps(execution_id);
+
+CREATE TABLE IF NOT EXISTS crm_deals (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id      INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
+    contact_phone   TEXT    NOT NULL,
+    title           TEXT    NOT NULL DEFAULT '',
+    stage           TEXT    NOT NULL DEFAULT 'novo',
+    potential_value REAL    NOT NULL DEFAULT 0.0,
+    owner           TEXT    NOT NULL DEFAULT '',
+    notes           TEXT    NOT NULL DEFAULT '',
+    created_at      REAL    NOT NULL,
+    updated_at      REAL    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_crm_deals_stage ON crm_deals(stage);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_deals_phone ON crm_deals(contact_phone);
+
+CREATE TABLE IF NOT EXISTS crm_tasks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    deal_id     INTEGER NOT NULL REFERENCES crm_deals(id) ON DELETE CASCADE,
+    title       TEXT    NOT NULL,
+    due_ts      REAL,
+    done        INTEGER NOT NULL DEFAULT 0,
+    notes       TEXT    NOT NULL DEFAULT '',
+    created_at  REAL    NOT NULL,
+    updated_at  REAL    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_crm_tasks_deal ON crm_tasks(deal_id);

@@ -426,6 +426,7 @@ def register_routes(app, registry):
                     "audio_model": settings.get("audio_model", "google/gemini-2.0-flash-001"),
                     "image_model": settings.get("image_model", "google/gemini-2.0-flash-001"),
                     "max_executions": settings.get("max_executions", 200),
+                    "crm_enabled": bool(master_policy_repo.get_tenant(slug, "crm_enabled", True)),
                 }
             )
         finally:
@@ -445,6 +446,8 @@ def register_routes(app, registry):
             if desired and not global_enabled:
                 return _err("API e modelos estão desativados globalmente.", status=403)
             master_policy_repo.set_tenant(slug, "api_models_enabled", desired)
+        if "crm_enabled" in body:
+            master_policy_repo.set_tenant(slug, "crm_enabled", bool(body.get("crm_enabled")))
 
         ctx, token = _with_tenant(slug)
         if not ctx:

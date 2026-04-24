@@ -252,6 +252,36 @@ export async function getBillingInvoices() {
   return request('GET', '/api/billing/invoices');
 }
 
+// ── CRM ────────────────────────────────────────────────────────────
+
+export async function getCrmBoard() {
+  return request('GET', '/api/crm/board');
+}
+
+export async function upsertCrmDeal(payload) {
+  return request('POST', '/api/crm/deals', payload);
+}
+
+export async function updateCrmDeal(dealId, payload) {
+  return request('PUT', `/api/crm/deals/${encodeURIComponent(String(dealId))}`, payload);
+}
+
+export async function getCrmTasks(dealId) {
+  return request('GET', `/api/crm/deals/${encodeURIComponent(String(dealId))}/tasks`);
+}
+
+export async function createCrmTask(dealId, payload) {
+  return request('POST', `/api/crm/deals/${encodeURIComponent(String(dealId))}/tasks`, payload);
+}
+
+export async function updateCrmTask(taskId, payload) {
+  return request('PUT', `/api/crm/tasks/${encodeURIComponent(String(taskId))}`, payload);
+}
+
+export async function deleteCrmTask(taskId) {
+  return request('DELETE', `/api/crm/tasks/${encodeURIComponent(String(taskId))}`);
+}
+
 // ── Update ────────────────────────────────────────────────────────
 
 export async function checkForUpdates() {
