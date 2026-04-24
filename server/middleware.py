@@ -28,7 +28,13 @@ def create_tenant_middleware(registry, base_domain: str):
     """
 
     async def tenant_middleware(request: Request, call_next):
-        host = request.headers.get("host", "").split(":")[0].lower()  # strip port
+        # Prefer original host forwarded by reverse proxies (Railway/Nginx).
+        forwarded_host = request.headers.get("x-forwarded-host", "")
+        if forwarded_host:
+            # X-Forwarded-Host may include a list: client, proxy1, proxy2...
+            host = forwarded_host.split(",")[0].strip().split(":")[0].lower()
+        else:
+            host = request.headers.get("host", "").split(":")[0].lower()  # strip port
         # Reset context at the start of each request to avoid accidental leaks.
         current_tenant_slug.set("default")
         current_tenant_db.set("default")
@@ -63,6 +69,18 @@ def create_tenant_middleware(registry, base_domain: str):
             # Local development: treat host as slug directly (e.g. localhost)
             # In dev mode, use query param ?tenant=slug or fall back to default
             subdomain = request.query_params.get("tenant", "")
+
+        # Fallback for environments where WHATSBOT_DOMAIN may not exactly match
+        # the incoming host suffix. If a known tenant exists in the first label
+        # of the host, resolve it directly.
+        if not subdomain and "." in host:
+            first_label = host.split(".", 1)[0]
+            if first_label and first_label not in RESERVED_SUBDOMAINS:
+                candidate = registry.get_by_slug(first_label)
+                if candidate:
+                    current_tenant_slug.set(first_label)
+                    current_tenant_db.set(candidate.db_name)
+                    return await call_next(request)
 
         # No subdomain resolved — might be the base domain itself
         if not subdomain or subdomain in RESERVED_SUBDOMAINS:
