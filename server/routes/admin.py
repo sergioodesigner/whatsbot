@@ -478,7 +478,6 @@ def register_routes(app, registry):
         tenant = tenant_repo.get_by_slug(slug)
         if not tenant:
             return _err("Empresa não encontrada.", status=404)
-        master_billing_repo.ensure_next_three_open_invoices(slug)
         profile = master_billing_repo.get_profile(slug)
         invoices = master_billing_repo.list_invoices(slug)
         financial = master_billing_repo.get_financial_summary(slug)
@@ -505,7 +504,6 @@ def register_routes(app, registry):
         payload["period_ym"] = period_ym
         try:
             invoice = master_billing_repo.upsert_invoice(slug, payload)
-            master_billing_repo.ensure_next_three_open_invoices(slug)
         except ValueError as exc:
             return _err(str(exc), status=400)
         summary = master_billing_repo.get_financial_summary(slug)
@@ -521,7 +519,6 @@ def register_routes(app, registry):
         deleted = master_billing_repo.delete_invoice(slug, period_ym)
         if not deleted:
             return _err("Fatura não encontrada.", status=404)
-        master_billing_repo.ensure_next_three_open_invoices(slug)
         return _ok({"message": "Fatura excluída.", "financial": master_billing_repo.get_financial_summary(slug)})
 
     @app.get("/api/admin/tenants/{slug}/invoices/ensure")

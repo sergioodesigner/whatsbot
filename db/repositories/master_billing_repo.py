@@ -78,8 +78,6 @@ def upsert_profile(tenant_slug: str, data: dict) -> dict:
         ),
     )
     conn.commit()
-    if payload["contract_start_ts"]:
-        ensure_next_three_open_invoices(tenant_slug)
     return get_profile(tenant_slug)
 
 
@@ -164,27 +162,23 @@ def delete_invoice(tenant_slug: str, period_ym: str) -> bool:
 
 
 def ensure_next_three_open_invoices(tenant_slug: str) -> None:
-    """Keep at least 3 future/open invoices (rolling window)."""
+    """Generate invoices manually to keep 3 open, based on latest created invoice."""
     profile = get_profile(tenant_slug)
     if not profile.get("contract_start_ts"):
         return
     due_day = int(profile.get("due_day") or 10)
     default_amount = float(profile.get("plan_amount") or 0.0)
     start_period = _period_from_ts(float(profile.get("contract_start_ts") or time.time()))
-    now_period = _period_from_ts(time.time())
-    first_period = max(start_period, now_period)
-
     invoices = list_invoices(tenant_slug)
-    open_periods = sorted(
-        [i["period_ym"] for i in invoices if not i.get("paid") and i.get("period_ym", "") >= now_period]
-    )
+    all_periods = sorted([i["period_ym"] for i in invoices if i.get("period_ym")])
+    open_count = len([i for i in invoices if not i.get("paid")])
 
-    if open_periods:
-        next_period = _next_period(open_periods[-1])
+    if all_periods:
+        next_period = _next_period(all_periods[-1])
     else:
-        next_period = first_period
+        next_period = start_period
 
-    while len(open_periods) < 3:
+    while open_count < 3:
         upsert_invoice(
             tenant_slug,
             {
@@ -195,7 +189,7 @@ def ensure_next_three_open_invoices(tenant_slug: str) -> None:
                 "notes": "Fatura gerada automaticamente",
             },
         )
-        open_periods.append(next_period)
+        open_count += 1
         next_period = _next_period(next_period)
 
 

@@ -145,7 +145,7 @@
           <div class="flex items-center justify-between">
             <div>
               <h3 class="font-semibold">Mini financeiro</h3>
-              <p class="text-xs text-slate-500">As próximas 3 faturas são geradas automaticamente após definir o início do contrato.</p>
+              <p class="text-xs text-slate-500">Use o botão para gerar/atualizar as próximas 3 faturas com base no contrato e no último período criado.</p>
             </div>
             <button id="ensure-invoices-btn" class="border px-3 py-1.5 rounded text-sm">Gerar/atualizar faturas</button>
           </div>
@@ -467,7 +467,6 @@
     }
 
     async function loadTenantCompany(slug) {
-      await api(`/api/admin/tenants/${encodeURIComponent(slug)}/invoices/ensure`);
       const data = await api(`/api/admin/tenants/${encodeURIComponent(slug)}/company`);
       const p = data.profile || {};
       document.getElementById("company-owner-name").value = p.owner_name || "";
