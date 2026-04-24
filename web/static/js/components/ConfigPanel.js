@@ -35,7 +35,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
   const [transferAlertEnabled, setTransferAlertEnabled] = useState(true);
   const [transferAlertDuration, setTransferAlertDuration] = useState(5);
   const [defaultAiEnabled, setDefaultAiEnabled] = useState(true);
-  const [apiModelsEnabled, setApiModelsEnabled] = useState(true);
   const [apiModelsGloballyEnabled, setApiModelsGloballyEnabled] = useState(true);
   const [apiModelsEffectiveEnabled, setApiModelsEffectiveEnabled] = useState(true);
   const [testing, setTesting] = useState(false);
@@ -64,7 +63,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
       setTransferAlertEnabled(config.transfer_alert_enabled ?? true);
       setTransferAlertDuration(config.transfer_alert_duration ?? 5);
       setDefaultAiEnabled(config.default_ai_enabled ?? true);
-      setApiModelsEnabled(config.api_models_enabled ?? true);
       setApiModelsGloballyEnabled(config.api_models_globally_enabled ?? true);
       setApiModelsEffectiveEnabled(config.api_models_effective_enabled ?? true);
     }
@@ -116,7 +114,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
       transfer_alert_enabled: transferAlertEnabled,
       transfer_alert_duration: parseInt(transferAlertDuration, 10) || 5,
       default_ai_enabled: defaultAiEnabled,
-      api_models_enabled: apiModelsEnabled,
     };
     // Only include api_key if user typed a new one
     if (apiKey.trim()) {
@@ -175,21 +172,11 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
 
       <!-- Section: API e Modelos -->
       <${Section} title="API e Modelos">
-        <div class="p-3 bg-wa-panel rounded-lg border border-wa-border">
-          <label class="flex items-center gap-2 text-sm font-semibold text-wa-text cursor-pointer">
-            <input
-              type="checkbox"
-              checked=${apiModelsEnabled}
-              disabled=${!apiModelsGloballyEnabled}
-              onChange=${(e) => setApiModelsEnabled(e.target.checked)}
-              class="w-4 h-4 rounded border-wa-border accent-wa-teal disabled:opacity-50"
-            />
-            Permitir edição de API e modelos nesta empresa
-          </label>
-          ${!apiModelsGloballyEnabled ? html`
-            <span class="text-xs text-red-600">Bloqueado globalmente pelo Superadmin</span>
-          ` : null}
-        </div>
+        ${!apiModelsGloballyEnabled ? html`
+          <div class="p-3 bg-red-50 rounded-lg border border-red-200">
+            <span class="text-xs text-red-700">API e modelos estão desativados globalmente pelo Superadmin.</span>
+          </div>
+        ` : null}
 
         <!-- API Key -->
         <div>
