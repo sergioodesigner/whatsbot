@@ -79,6 +79,11 @@ def register_routes(app, deps):
             "api_models_enabled": tenant_enabled,
             "api_models_effective_enabled": effective_enabled,
             "crm_enabled": _crm_policy(),
+            "automation_webhook_allowed_domains": settings.get("automation_webhook_allowed_domains", []),
+            "automation_webhook_allow_http": settings.get("automation_webhook_allow_http", False),
+            "automation_webhook_block_private_hosts": settings.get("automation_webhook_block_private_hosts", True),
+            "automation_webhook_max_retries": settings.get("automation_webhook_max_retries", 1),
+            "automation_webhook_retry_backoff_seconds": settings.get("automation_webhook_retry_backoff_seconds", 0.8),
         })
 
     @app.put("/api/config")
@@ -109,6 +114,11 @@ def register_routes(app, deps):
             "transfer_alert_enabled", "transfer_alert_duration",
             "group_reply_mode", "bot_phone", "bot_name",
             "default_ai_enabled",
+            "automation_webhook_allowed_domains",
+            "automation_webhook_allow_http",
+            "automation_webhook_block_private_hosts",
+            "automation_webhook_max_retries",
+            "automation_webhook_retry_backoff_seconds",
         }
         for key, value in body.items():
             if key in allowed_keys:

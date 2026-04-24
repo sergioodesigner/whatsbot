@@ -129,3 +129,36 @@ CREATE TABLE IF NOT EXISTS crm_tasks (
     updated_at  REAL    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_crm_tasks_deal ON crm_tasks(deal_id);
+
+CREATE TABLE IF NOT EXISTS automation_rules (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT    NOT NULL,
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    trigger_type   TEXT    NOT NULL,
+    from_stage     TEXT    NOT NULL DEFAULT '',
+    to_stage       TEXT    NOT NULL DEFAULT '',
+    condition_owner TEXT   NOT NULL DEFAULT '',
+    condition_min_value REAL,
+    condition_tag   TEXT   NOT NULL DEFAULT '',
+    action_type    TEXT    NOT NULL,
+    action_payload TEXT    NOT NULL DEFAULT '{}',
+    created_at     REAL    NOT NULL,
+    updated_at     REAL    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_automation_rules_trigger ON automation_rules(trigger_type, enabled);
+
+CREATE TABLE IF NOT EXISTS automation_runs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id      INTEGER REFERENCES automation_rules(id) ON DELETE SET NULL,
+    deal_id      INTEGER,
+    fingerprint  TEXT    NOT NULL DEFAULT '',
+    trigger_type TEXT    NOT NULL,
+    status       TEXT    NOT NULL DEFAULT 'ok',
+    context      TEXT    NOT NULL DEFAULT '{}',
+    result       TEXT    NOT NULL DEFAULT '{}',
+    error        TEXT    NOT NULL DEFAULT '',
+    ts           REAL    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_ts ON automation_runs(ts);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_fingerprint_ts ON automation_runs(fingerprint, ts);
+CREATE INDEX IF NOT EXISTS idx_automation_runs_deal_ts ON automation_runs(deal_id, ts);

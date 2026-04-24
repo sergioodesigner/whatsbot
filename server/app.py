@@ -21,7 +21,7 @@ from server.auth import auth_required, verify_token, verify_superadmin_delegate_
 from server.helpers import _get_web_dir
 from server.state import MemoryLogHandler, ConnectionManager, AppState
 from server.background import start_gowa_task, status_poll_loop, qr_poll_loop, avatar_fetch_task
-from server.routes import logs, sandbox, config, whatsapp, websocket, usage, contacts, webhook, auth, tags, executions, update, crm
+from server.routes import logs, sandbox, config, whatsapp, websocket, usage, contacts, webhook, auth, tags, executions, update, crm, automations
 from server.auth import generate_token
 from db.repositories import tenant_repo
 
@@ -289,6 +289,7 @@ def create_app(
     @app.get("/costs")
     @app.get("/executions")
     @app.get("/crm")
+    @app.get("/automations")
     @app.get("/contacts/{contact_id:int}")
     async def index(contact_id: int | None = None):
         index_file = web_dir / "index.html"
@@ -311,6 +312,7 @@ def create_app(
     tags.register_routes(app, deps)
     executions.register_routes(app, deps)
     crm.register_routes(app, deps)
+    automations.register_routes(app, deps)
     update.register_routes(app, deps)
 
     return app
@@ -584,6 +586,7 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
     @app.get("/costs")
     @app.get("/executions")
     @app.get("/crm")
+    @app.get("/automations")
     @app.get("/contacts/{contact_id:int}")
     async def index(request: Request, contact_id: int | None = None):
         from server.tenant import current_tenant_slug
@@ -636,6 +639,7 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
     tags.register_routes(app, deps)
     executions.register_routes(app, deps)
     crm.register_routes(app, deps)
+    automations.register_routes(app, deps)
     update.register_routes(app, deps)
 
     # Register superadmin routes

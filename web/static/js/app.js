@@ -7,6 +7,7 @@ import { Contacts } from './components/Contacts.js';
 import { CostsDashboard } from './components/CostsDashboard.js';
 import { Executions } from './components/Executions.js';
 import { CrmBoard } from './components/CrmBoard.js';
+import { Automations } from './components/Automations.js';
 import { LoginScreen } from './components/LoginScreen.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { useConfig } from './hooks/useConfig.js';
@@ -15,8 +16,8 @@ import { playTransferAlert } from './utils/alertSound.js';
 
 const html = htm.bind(h);
 
-const ROUTES = { '/': 'contacts', '/dashboard': 'dashboard', '/sandbox': 'sandbox', '/costs': 'costs', '/executions': 'executions', '/crm': 'crm' };
-const TAB_PATHS = { contacts: '/', dashboard: '/dashboard', sandbox: '/sandbox', costs: '/costs', executions: '/executions', crm: '/crm' };
+const ROUTES = { '/': 'contacts', '/dashboard': 'dashboard', '/sandbox': 'sandbox', '/costs': 'costs', '/executions': 'executions', '/crm': 'crm', '/automations': 'automations' };
+const TAB_PATHS = { contacts: '/', dashboard: '/dashboard', sandbox: '/sandbox', costs: '/costs', executions: '/executions', crm: '/crm', automations: '/automations' };
 
 function tabFromPath() {
   const path = window.location.pathname;
@@ -99,6 +100,13 @@ function GearMenu({ tab, onTabChange, hasPassword, onLogout, crmEnabled }) {
             >
               <span>📌</span>
               CRM
+            </button>
+            <button
+              onClick=${() => { onTabChange('automations'); setOpen(false); }}
+              class="w-full text-left px-4 py-2.5 text-[14px] hover:bg-wa-hover transition-colors flex items-center gap-2 ${tab === 'automations' ? 'text-wa-teal font-medium' : 'text-wa-text'}"
+            >
+              <span>⚡</span>
+              Automações
             </button>
           ` : null}
           ${hasPassword ? html`
@@ -253,6 +261,18 @@ function App({ onLogout, hasPassword }) {
                   </div>`
                 : html`<div class="max-w-4xl mx-auto p-4">
                     <${PageHeader} title="CRM" onBack=${() => setTab('contacts')} hideBack=${embeddedView || delegatedAccess} />
+                    <div class="bg-white rounded-xl border border-wa-border p-5 text-sm text-wa-secondary">
+                      O módulo CRM está desativado para esta empresa. Fale com o superadmin.
+                    </div>
+                  </div>`
+            : tab === 'automations' && !delegatedAccess
+              ? crmEnabled
+                ? html`<div class="max-w-6xl mx-auto p-4">
+                    <${PageHeader} title="Automações de CRM" onBack=${() => setTab('contacts')} hideBack=${embeddedView || delegatedAccess} />
+                    <${Automations} />
+                  </div>`
+                : html`<div class="max-w-4xl mx-auto p-4">
+                    <${PageHeader} title="Automações de CRM" onBack=${() => setTab('contacts')} hideBack=${embeddedView || delegatedAccess} />
                     <div class="bg-white rounded-xl border border-wa-border p-5 text-sm text-wa-secondary">
                       O módulo CRM está desativado para esta empresa. Fale com o superadmin.
                     </div>

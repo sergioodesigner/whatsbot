@@ -10,6 +10,10 @@ Baixou, instalou, colocou sua chave, escreveu como a IA deve se comportar, escan
 
 ---
 
+## Guias operacionais
+
+- Segurança e operação de automações CRM: `docs/automacoes-operacao-seguranca.md`
+
 ## Para quem é o WhatsBot?
 
 - Donos de loja que querem responder clientes automaticamente

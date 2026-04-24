@@ -282,6 +282,33 @@ export async function deleteCrmTask(taskId) {
   return request('DELETE', `/api/crm/tasks/${encodeURIComponent(String(taskId))}`);
 }
 
+// ── Automations ─────────────────────────────────────────────────────
+
+export async function getAutomationRules() {
+  return request('GET', '/api/automations/rules');
+}
+
+export async function createAutomationRule(payload) {
+  return request('POST', '/api/automations/rules', payload);
+}
+
+export async function updateAutomationRule(ruleId, payload) {
+  return request('PUT', `/api/automations/rules/${encodeURIComponent(String(ruleId))}`, payload);
+}
+
+export async function deleteAutomationRule(ruleId) {
+  return request('DELETE', `/api/automations/rules/${encodeURIComponent(String(ruleId))}`);
+}
+
+export async function simulateAutomationRule(ruleId, payload) {
+  return request('POST', `/api/automations/rules/${encodeURIComponent(String(ruleId))}/simulate`, payload);
+}
+
+export async function getAutomationRuns(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  return request('GET', `/api/automations/runs${qs ? '?' + qs : ''}`);
+}
+
 // ── Update ────────────────────────────────────────────────────────
 
 export async function checkForUpdates() {

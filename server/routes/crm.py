@@ -2,7 +2,7 @@
 
 import asyncio
 
-from db.repositories import crm_repo, master_policy_repo
+from db.repositories import crm_repo, master_policy_repo, automation_repo
 from server.helpers import _ok, _err
 from server.tenant import current_tenant_slug
 
@@ -42,12 +42,15 @@ def register_routes(app, deps):
     async def crm_update_deal(deal_id: int, body: dict):
         if not _crm_enabled():
             return _err("CRM desativado para esta empresa.", status=403)
+        previous = await asyncio.to_thread(crm_repo.get_deal, deal_id)
+        if not previous:
+            return _err("Oportunidade não encontrada.", status=404)
         try:
             deal = await asyncio.to_thread(crm_repo.update_deal, deal_id, body or {})
         except ValueError as exc:
             return _err(str(exc), status=400)
-        if not deal:
-            return _err("Oportunidade não encontrada.", status=404)
+        if deal and previous.get("stage") != deal.get("stage"):
+            await asyncio.to_thread(automation_repo.apply_deal_stage_changed, previous, deal)
         return _ok({"deal": deal})
 
     @app.get("/api/crm/deals/{deal_id}/tasks")
