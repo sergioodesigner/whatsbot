@@ -1,8 +1,6 @@
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
-import { testApiKey } from '../services/api.js';
-import { ModelSelect } from './ModelSelect.js';
 
 const html = htm.bind(h);
 
@@ -20,10 +18,6 @@ function Section({ title, children }) {
 }
 
 export function ConfigPanel({ config, saving, onSave, onNotify }) {
-  const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('');
-  const [audioModel, setAudioModel] = useState('');
-  const [imageModel, setImageModel] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [autoReply, setAutoReply] = useState(true);
   const [maxContext, setMaxContext] = useState(10);
@@ -37,7 +31,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
   const [defaultAiEnabled, setDefaultAiEnabled] = useState(true);
   const [apiModelsGloballyEnabled, setApiModelsGloballyEnabled] = useState(true);
   const [apiModelsEffectiveEnabled, setApiModelsEffectiveEnabled] = useState(true);
-  const [testing, setTesting] = useState(false);
   const [webPassword, setWebPassword] = useState('');
   const [webPasswordConfirm, setWebPasswordConfirm] = useState('');
   const [removePassword, setRemovePassword] = useState(false);
@@ -48,10 +41,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
   // Populate form when config loads
   useEffect(() => {
     if (config) {
-      setApiKey(''); // Don't show masked key in input
-      setModel(config.model || '');
-      setAudioModel(config.audio_model || '');
-      setImageModel(config.image_model || '');
       setSystemPrompt(config.system_prompt || '');
       setAutoReply(config.auto_reply ?? true);
       setMaxContext(config.max_context_messages ?? 10);
@@ -68,41 +57,8 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
     }
   }, [config]);
 
-  const [testResult, setTestResult] = useState(null); // {ok, message}
-
-  async function handleTestKey() {
-    const key = apiKey.trim();
-    if (!key) {
-      onNotify('Insira uma API key primeiro.');
-      return;
-    }
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await testApiKey(key);
-      if (res.ok) {
-        setTestResult({ ok: res.data.valid, message: res.data.message });
-        onNotify(res.data.message);
-        // Auto-save when key is valid
-        if (res.data.valid) {
-          await onSave({ openrouter_api_key: key });
-        }
-      } else {
-        setTestResult({ ok: false, message: res.error || 'Erro ao testar.' });
-        onNotify(res.error || 'Erro ao testar.');
-      }
-    } catch {
-      setTestResult({ ok: false, message: 'Erro de conexão.' });
-      onNotify('Erro de conexão.');
-    }
-    setTesting(false);
-  }
-
   async function handleSave() {
     const data = {
-      model: model.trim() || 'openai/gpt-4o-mini',
-      audio_model: audioModel.trim() || 'google/gemini-2.0-flash-001',
-      image_model: imageModel.trim() || 'google/gemini-2.0-flash-001',
       system_prompt: systemPrompt,
       auto_reply: autoReply,
       max_context_messages: parseInt(maxContext, 10) || 10,
@@ -115,10 +71,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
       transfer_alert_duration: parseInt(transferAlertDuration, 10) || 5,
       default_ai_enabled: defaultAiEnabled,
     };
-    // Only include api_key if user typed a new one
-    if (apiKey.trim()) {
-      data.openrouter_api_key = apiKey.trim();
-    }
     // Handle password change/removal
     if (removePassword) {
       data.web_password = '';
@@ -168,99 +120,6 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
           />
           IA ativada por padrão para novos contatos
         </label>
-      <//>
-
-      <!-- Section: API e Modelos -->
-      <${Section} title="API e Modelos">
-        ${!apiModelsGloballyEnabled ? html`
-          <div class="p-3 bg-red-50 rounded-lg border border-red-200">
-            <span class="text-xs text-red-700">API e modelos estão desativados globalmente pelo Superadmin.</span>
-          </div>
-        ` : null}
-
-        <!-- API Key -->
-        <div>
-          <label class="block text-sm font-semibold text-wa-text mb-1">API Key OpenRouter</label>
-          <div class="flex gap-2">
-            <input
-              type="password"
-              value=${apiKey}
-              disabled=${!apiModelsEffectiveEnabled}
-              onInput=${(e) => setApiKey(e.target.value)}
-              placeholder=${config.openrouter_api_key || 'sk-or-...'}
-              class="flex-1 bg-wa-panel text-wa-text px-3 py-2 rounded-lg text-sm border border-wa-border focus:border-wa-teal focus:outline-none"
-            />
-            <button
-              onClick=${handleTestKey}
-              disabled=${testing || !apiModelsEffectiveEnabled}
-              class="px-4 py-2 bg-wa-panel hover:bg-wa-hover disabled:opacity-50 text-wa-text text-sm rounded-lg transition-colors whitespace-nowrap border border-wa-border"
-            >
-              ${testing ? '...' : 'Testar'}
-            </button>
-          </div>
-          ${testResult ? html`
-            <p class="text-xs mt-1 ${testResult.ok ? 'text-green-600' : 'text-red-500'}">
-              ${testResult.ok ? '\u2713' : '\u2717'} ${testResult.message}
-            </p>
-          ` : config.openrouter_api_key ? html`
-            <p class="text-xs mt-1 text-wa-secondary">Chave salva: ${config.openrouter_api_key}</p>
-          ` : null}
-        </div>
-
-        <!-- Model -->
-        <div>
-          <label class="block text-sm font-semibold text-wa-text mb-1">Modelo de IA (chat)</label>
-          <${ModelSelect}
-            value=${model}
-            disabled=${!apiModelsEffectiveEnabled}
-            onChange=${setModel}
-            placeholder="openai/gpt-4o-mini"
-          />
-        </div>
-
-        <!-- Audio & Image models -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-sm font-semibold text-wa-text mb-1">Modelo transcrição áudio</label>
-            <${ModelSelect}
-              value=${audioModel}
-              disabled=${!apiModelsEffectiveEnabled}
-              onChange=${setAudioModel}
-              filterModality="audio"
-              placeholder="google/gemini-2.0-flash-001"
-            />
-            <span class="text-xs text-wa-secondary">Modelo com suporte a áudio</span>
-            <label class="flex items-center gap-2 mt-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked=${audioTranscriptionEnabled}
-                onChange=${(e) => setAudioTranscriptionEnabled(e.target.checked)}
-                class="accent-wa-teal w-4 h-4"
-              />
-              <span class="text-sm text-wa-text">Ativar transcrição de áudio</span>
-            </label>
-          </div>
-          <div>
-            <label class="block text-sm font-semibold text-wa-text mb-1">Modelo descrição imagem</label>
-            <${ModelSelect}
-              value=${imageModel}
-              disabled=${!apiModelsEffectiveEnabled}
-              onChange=${setImageModel}
-              filterModality="image"
-              placeholder="google/gemini-2.0-flash-001"
-            />
-            <span class="text-xs text-wa-secondary">Modelo com suporte a visão</span>
-            <label class="flex items-center gap-2 mt-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked=${imageTranscriptionEnabled}
-                onChange=${(e) => setImageTranscriptionEnabled(e.target.checked)}
-                class="accent-wa-teal w-4 h-4"
-              />
-              <span class="text-sm text-wa-text">Ativar transcrição de imagem</span>
-            </label>
-          </div>
-        </div>
       <//>
 
       <!-- Section: System Prompt -->
