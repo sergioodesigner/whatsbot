@@ -28,6 +28,10 @@ def main():
 def _main_single(data_dir: Path):
     """Original single-tenant startup (backward-compatible)."""
 
+    # ── Phase 1: Storage provider (local or Supabase) ─────────────────
+    from db.storage_provider import init_provider as _init_storage
+    _init_storage(data_dir)
+
     # Initialize SQLite database before anything else
     from db import init_db
     is_docker = os.environ.get("WHATSBOT_DOCKER") == "1" or Path("/.dockerenv").exists()
@@ -129,11 +133,30 @@ def _main_saas(data_dir: Path):
             "Sessions and tenant databases may be lost on deploy."
         )
 
-    # Initialize the master database
-    from db.master_connection import init_master_db
-    master_db_path = data_dir / "master.db"
-    init_master_db(master_db_path)
-    logger.info("Master database ready at %s", master_db_path)
+    # ── Phase 1: Storage provider (local or Supabase) ─────────────────
+    from db.storage_provider import init_provider as _init_storage
+    _init_storage(data_dir)
+
+    # ── Phase 2: Master database (SQLite or Supabase Postgres) ────────
+    _master_backend = os.environ.get("MASTER_DB_BACKEND", "sqlite").strip().lower()
+    if _master_backend == "supabase":
+        from db.master_pg_connection import init_master_pg
+        _pg_url = os.environ.get("SUPABASE_DB_URL", "").strip()
+        if not _pg_url:
+            logger.error(
+                "MASTER_DB_BACKEND=supabase but SUPABASE_DB_URL is not set. "
+                "Falling back to SQLite master DB."
+            )
+            _master_backend = "sqlite"
+        else:
+            init_master_pg(_pg_url)
+            logger.info("Master database ready (Supabase Postgres).")
+
+    if _master_backend != "supabase":
+        from db.master_connection import init_master_db
+        master_db_path = data_dir / "master.db"
+        init_master_db(master_db_path)
+        logger.info("Master database ready at %s", master_db_path)
 
     # Create superadmin if none exists (prompt for initial setup via API)
     from db.repositories import tenant_repo
