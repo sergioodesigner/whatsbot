@@ -109,7 +109,9 @@ class TenantRegistry:
             api_key = tenant_data.get("openrouter_api_key", "") or settings.get("openrouter_api_key", "")
 
             # Create GOWA manager and client for this tenant
-            webhook_url = f"http://127.0.0.1:{self._web_port}/api/webhook/{slug}"
+            # Use the shared webhook route and pass tenant via query param.
+            # In SaaS mode, middleware resolves ?tenant=<slug> for localhost hosts.
+            webhook_url = f"http://127.0.0.1:{self._web_port}/api/webhook?tenant={slug}"
             gowa_manager = GOWAManager(
                 port=gowa_port,
                 data_dir=data_dir,
