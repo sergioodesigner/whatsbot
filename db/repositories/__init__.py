@@ -117,3 +117,15 @@ usage_repo = _ModuleProxy(
     "db.repositories.usage_repo_pg",
     use_core_backend=True,
 )
+
+message_repo = _ModuleProxy(
+    "db.repositories.message_repo",
+    "db.repositories.message_repo_pg",
+    use_core_backend=True,
+)
+
+execution_repo = _ModuleProxy(
+    "db.repositories.execution_repo",
+    "db.repositories.execution_repo_pg",
+    use_core_backend=True,
+)
