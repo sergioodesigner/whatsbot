@@ -153,6 +153,16 @@ def upsert_invoice(tenant_slug: str, data: dict) -> dict:
     return dict(row) if row else {}
 
 
+def delete_invoice(tenant_slug: str, period_ym: str) -> bool:
+    conn = get_master_db()
+    cursor = conn.execute(
+        "DELETE FROM tenant_billing_invoices WHERE tenant_slug = ? AND period_ym = ?",
+        (tenant_slug, period_ym),
+    )
+    conn.commit()
+    return cursor.rowcount > 0
+
+
 def ensure_next_three_open_invoices(tenant_slug: str) -> None:
     """Keep at least 3 future/open invoices (rolling window)."""
     profile = get_profile(tenant_slug)

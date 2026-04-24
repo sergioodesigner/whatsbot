@@ -511,6 +511,19 @@ def register_routes(app, registry):
         summary = master_billing_repo.get_financial_summary(slug)
         return _ok({"invoice": invoice, "financial": summary})
 
+    @app.delete("/api/admin/tenants/{slug}/invoices/{period_ym}")
+    async def delete_tenant_invoice(request: Request, slug: str, period_ym: str):
+        guard = _check_admin(request)
+        if guard:
+            return guard
+        if not tenant_repo.get_by_slug(slug):
+            return _err("Empresa não encontrada.", status=404)
+        deleted = master_billing_repo.delete_invoice(slug, period_ym)
+        if not deleted:
+            return _err("Fatura não encontrada.", status=404)
+        master_billing_repo.ensure_next_three_open_invoices(slug)
+        return _ok({"message": "Fatura excluída.", "financial": master_billing_repo.get_financial_summary(slug)})
+
     @app.get("/api/admin/tenants/{slug}/invoices/ensure")
     async def ensure_tenant_invoices(request: Request, slug: str):
         guard = _check_admin(request)

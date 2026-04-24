@@ -133,7 +133,7 @@
             <input id="company-due-day" type="number" min="1" max="31" class="w-full border rounded px-3 py-2 mt-1" />
           </label>
           <label class="text-sm">Início contrato
-            <input id="company-contract-start" type="date" class="w-full border rounded px-3 py-2 mt-1" />
+            <input id="company-contract-start" type="text" class="w-full border rounded px-3 py-2 mt-1" placeholder="24-abril-2026" />
           </label>
           <label class="text-sm md:col-span-2">Observações
             <textarea id="company-notes" class="w-full border rounded px-3 py-2 mt-1"></textarea>
@@ -150,6 +150,26 @@
             <button id="ensure-invoices-btn" class="border px-3 py-1.5 rounded text-sm">Gerar/atualizar faturas</button>
           </div>
           <div id="invoice-list" class="overflow-x-auto mt-3 text-sm"></div>
+          <div id="invoice-editor" class="hidden mt-3 p-3 bg-slate-50 border rounded-lg space-y-3">
+            <h4 class="font-semibold text-sm">Editar fatura <span id="invoice-edit-period-label"></span></h4>
+            <input id="invoice-edit-period" type="hidden" />
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <label class="text-sm">Vencimento
+                <input id="invoice-edit-due-date" type="text" class="w-full border rounded px-3 py-2 mt-1" placeholder="24-abril-2026" />
+              </label>
+              <label class="text-sm">Valor
+                <input id="invoice-edit-amount" type="number" step="0.01" class="w-full border rounded px-3 py-2 mt-1" />
+              </label>
+              <label class="inline-flex items-center gap-2 text-sm mt-7">
+                <input id="invoice-edit-paid" type="checkbox" class="w-4 h-4" />
+                Pago
+              </label>
+            </div>
+            <div class="flex gap-2">
+              <button id="save-invoice-edit-btn" class="bg-blue-700 text-white px-4 py-2 rounded text-sm">Salvar edição</button>
+              <button id="cancel-invoice-edit-btn" class="border px-4 py-2 rounded text-sm">Cancelar</button>
+            </div>
+          </div>
         </div>
       </div>
       </div>
@@ -372,14 +392,35 @@
     function dateInputFromTs(ts) {
       if (!ts) return "";
       const d = new Date(ts * 1000);
-      const month = String(d.getMonth() + 1).padStart(2, "0");
       const day = String(d.getDate()).padStart(2, "0");
-      return `${d.getFullYear()}-${month}-${day}`;
+      const month = d.toLocaleString("pt-BR", { month: "long" }).toLowerCase();
+      return `${day}-${month}-${d.getFullYear()}`;
+    }
+
+    function parseBrazilianDate(value) {
+      const raw = String(value || "").trim().toLowerCase();
+      if (!raw) return null;
+
+      const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (iso) {
+        return Math.floor(new Date(`${iso[1]}-${iso[2]}-${iso[3]}T00:00:00`).getTime() / 1000);
+      }
+
+      const months = {
+        janeiro: 0, fevereiro: 1, marco: 2, março: 2, abril: 3,
+        maio: 4, junho: 5, julho: 6, agosto: 7, setembro: 8,
+        outubro: 9, novembro: 10, dezembro: 11,
+      };
+      const m = raw.match(/^(\d{1,2})[-/ ]([a-zç]+)[-/ ](\d{4})$/i);
+      if (!m || months[m[2]] == null) return null;
+      const day = parseInt(m[1], 10);
+      const month = months[m[2]];
+      const year = parseInt(m[3], 10);
+      return Math.floor(new Date(year, month, day).getTime() / 1000);
     }
 
     function tsFromDateInput(v) {
-      if (!v) return null;
-      return Math.floor(new Date(`${v}T00:00:00`).getTime() / 1000);
+      return parseBrazilianDate(v);
     }
 
     function invoiceStatusBadge(invoice) {
@@ -401,7 +442,7 @@
             <th class="py-2 px-3">Vencimento</th>
             <th class="py-2 px-3">Valor</th>
             <th class="py-2 px-3">Status</th>
-            <th class="py-2 px-3">Ação</th>
+            <th class="py-2 px-3">Ações</th>
           </tr></thead>
           <tbody>
             ${invoices.map(i => `
@@ -415,6 +456,8 @@
                     ? `<span class="text-xs text-slate-500">Pago em ${dateInputFromTs(i.paid_at)}</span>`
                     : `<button class="bg-emerald-700 text-white px-3 py-1 rounded text-xs" data-pay-invoice="${i.period_ym}" data-invoice-due="${i.due_ts}" data-invoice-amount="${i.amount}">Marcar como pago</button>`
                   }
+                  <button class="border px-3 py-1 rounded text-xs ml-1" data-edit-invoice="${i.period_ym}" data-invoice-due="${i.due_ts}" data-invoice-amount="${i.amount}" data-invoice-paid="${i.paid ? '1' : '0'}">Editar</button>
+                  <button class="border border-red-200 text-red-700 px-3 py-1 rounded text-xs ml-1" data-delete-invoice="${i.period_ym}">Excluir</button>
                 </td>
               </tr>
             `).join("")}
@@ -633,7 +676,60 @@
       }
     });
 
+    document.getElementById("cancel-invoice-edit-btn").addEventListener("click", () => {
+      document.getElementById("invoice-editor").classList.add("hidden");
+    });
+
+    document.getElementById("save-invoice-edit-btn").addEventListener("click", async () => {
+      if (!currentTenantSlug) return;
+      const period = document.getElementById("invoice-edit-period").value;
+      const dueTs = tsFromDateInput(document.getElementById("invoice-edit-due-date").value);
+      if (!period || !dueTs) return setStatus("Informe uma data no formato DD-mês-YYYY. Ex: 24-abril-2026", true);
+      try {
+        await api(`/api/admin/tenants/${encodeURIComponent(currentTenantSlug)}/invoices/${encodeURIComponent(period)}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            due_ts: dueTs,
+            amount: parseFloat(document.getElementById("invoice-edit-amount").value || "0"),
+            paid: document.getElementById("invoice-edit-paid").checked,
+          }),
+        });
+        document.getElementById("invoice-editor").classList.add("hidden");
+        await Promise.all([loadTenantCompany(currentTenantSlug), loadTenants()]);
+        setStatus(`Fatura ${period} atualizada.`);
+      } catch (err) {
+        setStatus(`Erro ao editar fatura: ${err.message}`, true);
+      }
+    });
+
     document.getElementById("invoice-list").addEventListener("click", async (e) => {
+      const editBtn = e.target.closest("[data-edit-invoice]");
+      if (editBtn) {
+        document.getElementById("invoice-edit-period").value = editBtn.dataset.editInvoice;
+        document.getElementById("invoice-edit-period-label").textContent = editBtn.dataset.editInvoice;
+        document.getElementById("invoice-edit-due-date").value = dateInputFromTs(parseFloat(editBtn.dataset.invoiceDue || "0"));
+        document.getElementById("invoice-edit-amount").value = editBtn.dataset.invoiceAmount || "0";
+        document.getElementById("invoice-edit-paid").checked = editBtn.dataset.invoicePaid === "1";
+        document.getElementById("invoice-editor").classList.remove("hidden");
+        return;
+      }
+
+      const deleteBtn = e.target.closest("[data-delete-invoice]");
+      if (deleteBtn) {
+        const period = deleteBtn.dataset.deleteInvoice;
+        if (!confirm(`Excluir a fatura ${period}?`)) return;
+        try {
+          await api(`/api/admin/tenants/${encodeURIComponent(currentTenantSlug)}/invoices/${encodeURIComponent(period)}`, {
+            method: "DELETE",
+          });
+          await Promise.all([loadTenantCompany(currentTenantSlug), loadTenants()]);
+          setStatus(`Fatura ${period} excluída.`);
+        } catch (err) {
+          setStatus(`Erro ao excluir fatura: ${err.message}`, true);
+        }
+        return;
+      }
+
       const btn = e.target.closest("[data-pay-invoice]");
       if (!btn || !currentTenantSlug) return;
       const period = btn.dataset.payInvoice;
