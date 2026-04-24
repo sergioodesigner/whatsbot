@@ -105,3 +105,15 @@ tag_repo = _ModuleProxy(
     "db.repositories.tag_repo_pg",
     use_core_backend=True,
 )
+
+contact_repo = _ModuleProxy(
+    "db.repositories.contact_repo",
+    "db.repositories.contact_repo_pg",
+    use_core_backend=True,
+)
+
+usage_repo = _ModuleProxy(
+    "db.repositories.usage_repo",
+    "db.repositories.usage_repo_pg",
+    use_core_backend=True,
+)
