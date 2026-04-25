@@ -6,6 +6,7 @@ Supports two modes:
 """
 
 import logging
+import logging.handlers
 import os
 import sys
 import threading
@@ -13,6 +14,43 @@ import webbrowser
 from pathlib import Path
 
 from config.settings import get_data_dir
+
+_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
+
+def _truthy_env(name: str, default: bool) -> bool:
+    v = os.environ.get(name, "").strip().lower()
+    if not v:
+        return default
+    return v in ("1", "true", "yes", "on")
+
+
+def _handlers_with_optional_file(log_path: Path | None, *, default_file: bool) -> list[logging.Handler]:
+    """Stdout always; file only if enabled and the filesystem accepts writes."""
+    fmt = logging.Formatter(_LOG_FORMAT)
+    out = logging.StreamHandler(sys.stdout)
+    out.setFormatter(fmt)
+    handlers: list[logging.Handler] = [out]
+    if log_path is None:
+        return handlers
+    if not _truthy_env("WHATSBOT_FILE_LOG", default_file):
+        return handlers
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        fh = logging.handlers.RotatingFileHandler(
+            log_path,
+            maxBytes=int(os.environ.get("WHATSBOT_LOG_MAX_BYTES", "5242880")),
+            backupCount=int(os.environ.get("WHATSBOT_LOG_BACKUP_COUNT", "3")),
+            encoding="utf-8",
+        )
+        fh.setFormatter(fmt)
+        handlers.append(fh)
+    except OSError as exc:
+        print(
+            f"[whatsbot] Log em arquivo desativado ({exc!s}); usando apenas stdout.",
+            file=sys.stderr,
+        )
+    return handlers
 
 
 def main():
@@ -49,17 +87,15 @@ def _main_single(data_dir: Path):
     from config.settings import Settings
     settings = Settings()
 
-    # Setup logging
+    # Setup logging (arquivo opcional; evita ENOSPC em volumes pequenos)
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler(
-                settings.logs_dir / "whatsbot.log",
-                encoding="utf-8",
-            ),
-        ],
+        format=_LOG_FORMAT,
+        handlers=_handlers_with_optional_file(
+            settings.logs_dir / "whatsbot.log",
+            default_file=True,
+        ),
+        force=True,
     )
     logger = logging.getLogger("whatsbot")
     logger.info("WhatsBot starting (single-tenant mode)...")
@@ -110,19 +146,18 @@ def _main_single(data_dir: Path):
 def _main_saas(data_dir: Path):
     """Multi-tenant SaaS startup."""
 
-    # Setup logging first
-    logs_dir = data_dir / "logs"
-    logs_dir.mkdir(exist_ok=True)
+    # Logging: em PaaS o volume costuma ser pequeno — por padrão só stdout
+    # (Railway captura stdout). Arquivo: WHATSBOT_FILE_LOG=1
+    _on_railway = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"))
+    _default_file = not _on_railway
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler(
-                logs_dir / "whatsbot_saas.log",
-                encoding="utf-8",
-            ),
-        ],
+        format=_LOG_FORMAT,
+        handlers=_handlers_with_optional_file(
+            data_dir / "logs" / "whatsbot_saas.log",
+            default_file=_default_file,
+        ),
+        force=True,
     )
     logger = logging.getLogger("whatsbot")
     logger.info("WhatsBot starting (SaaS multi-tenant mode)...")
