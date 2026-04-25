@@ -11,14 +11,13 @@ from __future__ import annotations
 
 import logging
 import os
-import threading
 from contextlib import contextmanager
 from typing import Any, Iterator
 
 logger = logging.getLogger(__name__)
 
-_local = threading.local()
 _db_url: str | None = None
+_pool = None
 
 # ── Schema DDL (run once at startup) ─────────────────────────────────
 
@@ -106,46 +105,81 @@ def init_master_pg(db_url: str) -> None:
 
     Creates tables if they don't exist.  Call once at startup.
     """
-    global _db_url
+    global _db_url, _pool
     _db_url = db_url
-    with _get_conn() as conn:
+    # Recreate pool on re-init (e.g. hot reload)
+    if _pool is not None:
+        try:
+            _pool.closeall()
+        except Exception:
+            pass
+        _pool = None
+
+    try:
+        import psycopg2
+        import psycopg2.extras
+        from psycopg2.pool import ThreadedConnectionPool
+    except ImportError as exc:
+        raise RuntimeError(
+            "psycopg2 is not installed. Add 'psycopg2-binary' to requirements.txt."
+        ) from exc
+
+    min_conn = int(os.environ.get("SUPABASE_PG_POOL_MIN", "1"))
+    max_conn = int(os.environ.get("SUPABASE_PG_POOL_MAX", "4"))
+    if max_conn < min_conn:
+        max_conn = min_conn
+
+    _pool = ThreadedConnectionPool(
+        minconn=min_conn,
+        maxconn=max_conn,
+        dsn=_db_url,
+        cursor_factory=psycopg2.extras.RealDictCursor,
+    )
+
+    with get_pg_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(_MASTER_SCHEMA_PG)
         conn.commit()
-    logger.info("Supabase master DB initialised (pg).")
+    logger.info(
+        "Supabase master DB initialised (pg pool min=%d max=%d).",
+        min_conn,
+        max_conn,
+    )
 
 
 def _get_conn():
-    """Return (or open) a thread-local psycopg2 connection."""
-    global _db_url
-    if _db_url is None:
+    """Borrow a psycopg2 connection from the global pool."""
+    global _db_url, _pool
+    if _db_url is None or _pool is None:
         raise RuntimeError(
             "Supabase master DB not initialised. Call init_master_pg() first."
         )
-    conn = getattr(_local, "conn", None)
-    if conn is None or conn.closed:
-        try:
-            import psycopg2
-            import psycopg2.extras
-        except ImportError as exc:
-            raise RuntimeError(
-                "psycopg2 is not installed. Add 'psycopg2-binary' to requirements.txt."
-            ) from exc
-        conn = psycopg2.connect(_db_url, cursor_factory=psycopg2.extras.RealDictCursor)
-        conn.autocommit = False
-        _local.conn = conn
+    conn = _pool.getconn()
+    conn.autocommit = False
     return conn
 
 
 @contextmanager
 def get_pg_conn():
     """Context manager yielding a psycopg2 connection."""
+    global _pool
     conn = _get_conn()
     try:
         yield conn
     except Exception:
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         raise
+    finally:
+        # Always return a clean connection to the pool.
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        if _pool is not None:
+            _pool.putconn(conn)
 
 
 def fetchone(sql: str, params: tuple = ()) -> dict | None:
