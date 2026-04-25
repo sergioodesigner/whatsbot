@@ -86,7 +86,7 @@ def set_contact_tags(contact_id: int, tag_names: list[str]) -> None:
                         VALUES (%s, %s, %s)
                         ON CONFLICT DO NOTHING
                         """,
-                        (slug, contact_id, row[0]),
+                        (slug, contact_id, row["id"]),
                     )
         conn.commit()
 

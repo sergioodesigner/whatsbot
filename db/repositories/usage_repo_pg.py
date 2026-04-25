@@ -178,12 +178,12 @@ def by_contact(start_ts: float | None = None,
                 
                 by_type = {}
                 for r in by_type_rows:
-                    by_type[r[0]] = {
-                        "prompt_tokens": r[1],
-                        "completion_tokens": r[2],
-                        "total_tokens": r[3],
-                        "cost_usd": r[4],
-                        "call_count": r[5],
+                    by_type[r["call_type"]] = {
+                        "prompt_tokens": r["prompt_tokens"],
+                        "completion_tokens": r["completion_tokens"],
+                        "total_tokens": r["total_tokens"],
+                        "cost_usd": r["cost_usd"],
+                        "call_count": r["call_count"],
                     }
 
                 results.append({

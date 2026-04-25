@@ -103,12 +103,12 @@ def update_status(contact_id: int, content: str, new_status: str | None,
                 if msg_id:
                     cur.execute(
                         "UPDATE messages SET status = %s, msg_id = %s WHERE id = %s AND tenant_slug = %s",
-                        (new_status, msg_id, row[0], slug),
+                        (new_status, msg_id, row["id"], slug),
                     )
                 else:
                     cur.execute(
                         "UPDATE messages SET status = %s WHERE id = %s AND tenant_slug = %s",
-                        (new_status, row[0], slug),
+                        (new_status, row["id"], slug),
                     )
         conn.commit()
 
@@ -137,7 +137,7 @@ def update_status_by_msg_id(msg_id: str, new_status: str) -> list[str]:
             )
             row = cur.fetchone()
             if row:
-                c_id, c_ts = row[0], row[1]
+                c_id, c_ts = row["contact_id"], row["ts"]
                 prior_statuses = ('sent', 'operator') if new_status == 'delivered' else ('sent', 'delivered', 'operator')
                 placeholders = ','.join('%s' for _ in prior_statuses)
                 
@@ -149,7 +149,7 @@ def update_status_by_msg_id(msg_id: str, new_status: str) -> list[str]:
                     (c_id, slug, c_ts, *prior_statuses, msg_id),
                 )
                 prior_rows = cur.fetchall()
-                cascaded_ids = [r[0] for r in prior_rows]
+                cascaded_ids = [r["msg_id"] for r in prior_rows]
                 
                 if cascaded_ids:
                     cur.execute(
