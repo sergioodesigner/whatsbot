@@ -111,6 +111,8 @@ def register_routes(app, deps):
             clean = clean.split(";", 1)[0].strip()
         if not clean:
             return ""
+        if clean.startswith(("http://", "https://", "blob:")):
+            return clean
         if "/statics/" in clean:
             clean = clean.split("/statics/", 1)[1]
             return f"statics/{clean.lstrip('/')}"
@@ -124,8 +126,29 @@ def register_routes(app, deps):
             return f"statics/media/{clean}"
         return clean.lstrip("/")
 
+    def _is_remote_media_path(path: str | None) -> bool:
+        if not path:
+            return False
+        clean = str(path).strip()
+        return clean.startswith(("http://", "https://", "blob:"))
+
+    def _should_repair_media_path(path: str | None) -> bool:
+        """Avoid expensive repair on already-good/remote paths."""
+        if not path:
+            return False
+        clean = str(path).strip().strip('"').strip("'")
+        if not clean or _is_remote_media_path(clean):
+            return False
+        if clean.startswith("statics/"):
+            return False
+        if clean.startswith("/statics/"):
+            return False
+        return True
+
     def _repair_media_path(media_path: str | None) -> str | None:
         """Backfill old incoming media files into statics/media when possible."""
+        if _is_remote_media_path(media_path):
+            return media_path
         raw_clean = str(media_path or "").strip().strip('"').strip("'").replace("\\", "/")
         normalized = _normalize_media_path(media_path)
         if not normalized:
@@ -280,7 +303,8 @@ def register_routes(app, deps):
             # Load messages and repair legacy media paths on-the-fly.
             messages = message_repo.get_all(contact_id)
             for m in messages:
-                if m.get("media_type") in ("audio", "image") and m.get("media_path"):
+                media_path = m.get("media_path")
+                if m.get("media_type") in ("audio", "image", "video", "gif") and _should_repair_media_path(media_path):
                     repaired = _repair_media_path(m.get("media_path"))
                     if repaired and repaired != m.get("media_path"):
                         m["media_path"] = repaired

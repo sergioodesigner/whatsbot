@@ -99,9 +99,8 @@ def get_deal_by_phone(phone: str) -> dict | None:
     ).fetchone()
     if not row:
         return None
-    item = dict(row)
-    item["contact"] = _contact_snapshot(item["contact_phone"])
-    return item
+    # Hot path for chat panel: avoid extra contact snapshot query here.
+    return dict(row)
 
 
 def upsert_deal(data: dict) -> dict:

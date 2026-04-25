@@ -212,7 +212,8 @@ def list_contacts(q: str = "", archived: bool = False) -> list[dict]:
                lm.media_type AS last_msg_media_type,
                lm.status    AS last_msg_status,
                lm.msg_id    AS last_msg_id,
-               (SELECT COUNT(*) FROM messages WHERE contact_id = c.id AND tenant_slug = %s) AS msg_count
+               (SELECT COUNT(*) FROM messages WHERE contact_id = c.id AND tenant_slug = %s) AS msg_count,
+               COALESCE(tag_agg.tags, ARRAY[]::TEXT[]) AS tags
         FROM contacts c
         LEFT JOIN (
             SELECT m1.contact_id, m1.content, m1.role, m1.ts, m1.media_type, m1.status, m1.msg_id
@@ -225,66 +226,66 @@ def list_contacts(q: str = "", archived: bool = False) -> list[dict]:
             ) m2 ON m1.contact_id = m2.contact_id AND m1.ts = m2.max_ts
             WHERE m1.tenant_slug = %s
         ) lm ON lm.contact_id = c.id
+        LEFT JOIN LATERAL (
+            SELECT ARRAY_AGG(t.name ORDER BY t.name) AS tags
+            FROM contact_tags ct
+            JOIN tags t ON t.id = ct.tag_id
+            WHERE ct.contact_id = c.id
+              AND ct.tenant_slug = %s
+              AND t.tenant_slug = %s
+        ) tag_agg ON TRUE
         WHERE c.is_archived = %s
           AND c.tenant_slug = %s
           AND (c.phone NOT LIKE '%%@%%' OR c.phone LIKE '%%@g.us')
         ORDER BY COALESCE(lm.ts, c.updated_at) DESC
         """,
-        (slug, slug, slug, 1 if archived else 0, slug),
+        (slug, slug, slug, slug, slug, 1 if archived else 0, slug),
     )
 
     results = []
-    with pg.dict_cursor() as (conn, cur):
-        for row in rows:
-            contact_id = row["id"]
-            cur.execute(
-                """SELECT t.name FROM tags t
-                   JOIN contact_tags ct ON ct.tag_id = t.id
-                   WHERE ct.contact_id = %s AND ct.tenant_slug = %s AND t.tenant_slug = %s""",
-                (contact_id, slug, slug),
-            )
-            tag_rows = cur.fetchall()
-            tags = [t["name"] for t in tag_rows]
+    for row in rows:
+        contact_id = row["id"]
+        tags = [t for t in (row.get("tags") or []) if t]
 
-            last_content = ""
-            lmt = row["last_msg_media_type"]
-            if row["last_msg_content"] is not None:
-                if lmt == "image":
-                    last_content = (row["last_msg_content"] or "")[:80] or "\U0001f4f7 Imagem"
-                elif lmt == "audio":
-                    last_content = "\U0001f3a4 Áudio"
-                elif lmt == "gif":
-                    last_content = "\U0001f39e\ufe0f GIF"
-                elif lmt == "video":
-                    last_content = "\U0001f3ac Vídeo"
-                else:
-                    last_content = (row["last_msg_content"] or "")[:80]
+        last_content = ""
+        lmt = row["last_msg_media_type"]
+        if row["last_msg_content"] is not None:
+            if lmt == "image":
+                last_content = (row["last_msg_content"] or "")[:80] or "\U0001f4f7 Imagem"
+            elif lmt == "audio":
+                last_content = "\U0001f3a4 Áudio"
+            elif lmt == "gif":
+                last_content = "\U0001f39e\ufe0f GIF"
+            elif lmt == "video":
+                last_content = "\U0001f3ac Vídeo"
+            else:
+                last_content = (row["last_msg_content"] or "")[:80]
 
-            is_group = bool(row["is_group"])
-            group_name = row["group_name"] or ""
-            name = group_name if is_group else (row["name"] or "")
+        is_group = bool(row["is_group"])
+        group_name = row["group_name"] or ""
+        name = group_name if is_group else (row["name"] or "")
 
-            results.append({
-                "id": contact_id,
-                "phone": row["phone"],
-                "name": name,
-                "last_message": last_content,
-                "last_message_role": row["last_msg_role"] or "",
-                "last_message_ts": row["last_msg_ts"] or 0,
-                "last_message_status": row["last_msg_status"] or "",
-                "last_message_msg_id": row["last_msg_id"] or "",
-                "msg_count": row["msg_count"] or 0,
-                "unread_count": row["unread_count"],
-                "unread_ai_count": row["unread_ai_count"],
-                "ai_enabled": bool(row["ai_enabled"]),
-                "is_group": is_group,
-                "group_name": group_name,
-                "is_archived": bool(row["is_archived"]),
-                "archived_by_app": bool(row["archived_by_app"]) if row["archived_by_app"] is not None else False,
-                "can_send": bool(row["can_send"]) if row["can_send"] is not None else True,
-                "tags": tags,
-                "updated_at": row["updated_at"],
-            })
+        results.append({
+            "id": contact_id,
+            "phone": row["phone"],
+            "name": name,
+            "last_message": last_content,
+            "last_message_role": row["last_msg_role"] or "",
+            "last_message_ts": row["last_msg_ts"] or 0,
+            "last_message_status": row["last_msg_status"] or "",
+            "last_message_msg_id": row["last_msg_id"] or "",
+            "msg_count": row["msg_count"] or 0,
+            "unread_count": row["unread_count"],
+            "unread_ai_count": row["unread_ai_count"],
+            "ai_enabled": bool(row["ai_enabled"]),
+            "is_group": is_group,
+            "group_name": group_name,
+            "is_archived": bool(row["is_archived"]),
+            "archived_by_app": bool(row["archived_by_app"]) if row["archived_by_app"] is not None else False,
+            "can_send": bool(row["can_send"]) if row["can_send"] is not None else True,
+            "tags": tags,
+            "updated_at": row["updated_at"],
+        })
 
     if q:
         ql = q.lower()

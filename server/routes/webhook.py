@@ -35,6 +35,8 @@ def _normalize_media_path(path: str | None) -> str | None:
         clean = clean.split(";", 1)[0].strip()
     if not clean:
         return None
+    if clean.startswith(("http://", "https://", "blob:")):
+        return clean
     clean = clean.replace("\\", "/").strip()
 
     # Strip absolute prefixes and keep project-relative static paths.
@@ -84,6 +86,8 @@ def register_routes(app, deps):
         normalized = _normalize_media_path(media_path)
         if not normalized:
             return None
+        if normalized.startswith(("http://", "https://", "blob:")):
+            return normalized
 
         data_dir = Path(settings.data_dir)
         filename = Path(normalized).name
@@ -247,6 +251,8 @@ def register_routes(app, deps):
         clean = _normalize_media_path(rel_path)
         if not clean:
             return False
+        if clean.startswith(("http://", "https://", "blob:")):
+            return True
         return (Path(settings.data_dir) / clean).is_file()
 
     def _resolve_media_field(
