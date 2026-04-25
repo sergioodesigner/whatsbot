@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def register_routes(app, deps):
+    gowa_manager = deps.gowa_manager
     gowa_client = deps.gowa_client
     ws_manager = deps.ws_manager
     state = deps.state
@@ -46,7 +47,14 @@ def register_routes(app, deps):
 
     @app.post("/api/whatsapp/logout")
     async def logout():
-        await asyncio.to_thread(gowa_client.logout)
+        try:
+            await asyncio.to_thread(gowa_client.logout)
+        except Exception as e:
+            logger.warning("gowa_client.logout failed: %s", e)
+        
+        # Hard wipe the database to fix any corruption and restart GOWA
+        await asyncio.to_thread(gowa_manager.purge_and_restart)
+
         state.qr_data = None
         state.qr_fetched_at = 0
         state.connected = False

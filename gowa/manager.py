@@ -120,6 +120,22 @@ class GOWAManager:
         time.sleep(1)
         self.start()
 
+    def purge_and_restart(self):
+        """Delete GOWA database files to recover from corruption, then restart."""
+        self.stop()
+        time.sleep(1)
+        try:
+            db_path = self.data_dir / "whatsapp.db"
+            shm_path = self.data_dir / "whatsapp.db-shm"
+            wal_path = self.data_dir / "whatsapp.db-wal"
+            if db_path.exists(): db_path.unlink()
+            if shm_path.exists(): shm_path.unlink()
+            if wal_path.exists(): wal_path.unlink()
+            logger.info("GOWA database purged.")
+        except Exception as e:
+            logger.error("Failed to purge GOWA database: %s", e)
+        self.start()
+
     def _watchdog(self):
         """Watch the GOWA process and restart on crash."""
         while self._running:
