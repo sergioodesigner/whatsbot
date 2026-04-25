@@ -134,6 +134,14 @@ def prune(max_keep: int) -> int:
     return cursor.rowcount
 
 
+def delete_older_than(cutoff_ts: float) -> int:
+    """Delete executions (and cascaded steps) older than cutoff_ts. Returns rows deleted."""
+    conn = get_db()
+    cursor = conn.execute("DELETE FROM executions WHERE started_at < ?", (cutoff_ts,))
+    conn.commit()
+    return cursor.rowcount
+
+
 def get_webhook_payloads(limit: int = 50) -> list[dict]:
     """Get recent webhook payloads from execution steps (replaces in-memory deque)."""
     conn = get_db()

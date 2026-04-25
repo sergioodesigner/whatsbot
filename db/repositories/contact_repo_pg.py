@@ -164,6 +164,16 @@ def mark_user_messages_as_read(contact_id: int) -> list[str]:
     return msg_ids
 
 
+def get_unread_msg_ids(contact_id: int) -> list[str]:
+    """Return tracked unread msg_ids for a contact (without clearing)."""
+    slug = pg._get_slug()
+    rows = pg.fetchall(
+        "SELECT msg_id FROM unread_msg_ids WHERE contact_id = %s AND tenant_slug = %s",
+        (contact_id, slug),
+    )
+    return [r["msg_id"] for r in rows]
+
+
 def get_observations(contact_id: int) -> list[str]:
     slug = pg._get_slug()
     rows = pg.fetchall(

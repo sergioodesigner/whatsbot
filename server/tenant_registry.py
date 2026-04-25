@@ -15,6 +15,7 @@ from pathlib import Path
 
 from db import db_manager
 from db.repositories import tenant_repo
+from db.tenant_pg_connection import is_core_supabase_backend
 from server.state import ConnectionManager, AppState
 
 logger = logging.getLogger(__name__)
@@ -74,11 +75,16 @@ class TenantRegistry:
 
     def _init_tenant_db(self, slug: str) -> str:
         """Initialize a tenant's SQLite database. Returns the db_name."""
+        db_name = f"tenant_{slug}"
+        if is_core_supabase_backend():
+            # Conversational data lives in Postgres; avoid per-tenant SQLite on
+            # Railway volumes (can raise disk I/O errors) when not needed.
+            logger.info("Tenant '%s': skipping SQLite init (CORE_DB_BACKEND=supabase).", slug)
+            return db_name
         data_dir = self._tenant_data_dir(slug)
         storages_dir = data_dir / "storages"
         storages_dir.mkdir(parents=True, exist_ok=True)
         db_path = storages_dir / "whatsbot.db"
-        db_name = f"tenant_{slug}"
         db_manager.init(db_name, db_path)
         return db_name
 

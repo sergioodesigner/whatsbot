@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 from contextlib import contextmanager
 
@@ -236,25 +237,32 @@ def init_tenant_pg_schema() -> None:
     except Exception as e:
         logger.warning("Could not execute main tenant schema DDL (might be locked): %s", e)
 
-    # 2. Schema patches (Add missing columns gracefully without crashing on timeout)
+    # 2. Schema patches (older DBs may predate some columns). Use one transaction
+    # and a generous statement timeout — short timeouts fail under lock/contention.
     patches = [
         "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type TEXT;",
         "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_path TEXT;",
         "ALTER TABLE messages ADD COLUMN IF NOT EXISTS status TEXT;",
         "ALTER TABLE messages ADD COLUMN IF NOT EXISTS msg_id TEXT;",
     ]
-    
-    for patch in patches:
-        try:
-            with get_pg_conn() as conn:
-                with conn.cursor() as cur:
-                    # Set a very short statement timeout for schema patches on startup
-                    cur.execute("SET statement_timeout = '2s';")
+    patch_timeout = os.environ.get("TENANT_PG_PATCH_STATEMENT_TIMEOUT", "120s").strip() or "120s"
+    if not re.fullmatch(r"\d+[smh]", patch_timeout, flags=re.IGNORECASE):
+        patch_timeout = "120s"
+    try:
+        with get_pg_conn() as conn:
+            with conn.cursor() as cur:
+                # Literal SET interval (validated above) — avoids driver quirks with parameterized SET.
+                cur.execute(f"SET statement_timeout = '{patch_timeout}';")
+                for patch in patches:
                     cur.execute(patch)
-                conn.commit()
-        except Exception as e:
-            logger.warning("Skipped schema patch '%s' due to timeout or error: %s", patch, e)
-            
+            conn.commit()
+    except Exception as e:
+        logger.warning(
+            "Tenant schema patches failed (timeout=%s): %s",
+            patch_timeout,
+            e,
+        )
+
     logger.info("Supabase tenant schema initialised (Phases 3/4).")
 
 

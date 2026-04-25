@@ -146,12 +146,8 @@ class ContactMemory:
 
     def get_unread_msg_ids(self) -> list[str]:
         """Return unread message IDs from the database."""
-        from db.connection import get_db
-        conn = get_db()
-        rows = conn.execute(
-            "SELECT msg_id FROM unread_msg_ids WHERE contact_id = ?", (self.id,)
-        ).fetchall()
-        return [r["msg_id"] for r in rows]
+        from db.repositories import contact_repo
+        return contact_repo.get_unread_msg_ids(self.id)
 
     def increment_unread(self, msg_id: str | None = None):
         self.unread_count += 1

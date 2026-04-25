@@ -180,6 +180,15 @@ def mark_user_messages_as_read(contact_id: int) -> list[str]:
     return msg_ids
 
 
+def get_unread_msg_ids(contact_id: int) -> list[str]:
+    """Return tracked unread msg_ids for a contact (without clearing)."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT msg_id FROM unread_msg_ids WHERE contact_id = ?", (contact_id,)
+    ).fetchall()
+    return [r["msg_id"] for r in rows]
+
+
 def get_observations(contact_id: int) -> list[str]:
     """Return all observations for a contact."""
     conn = get_db()

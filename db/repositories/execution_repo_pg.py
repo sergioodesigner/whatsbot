@@ -139,6 +139,15 @@ def prune(max_keep: int) -> int:
     return count
 
 
+def delete_older_than(cutoff_ts: float) -> int:
+    """Delete executions (and cascaded steps) older than cutoff_ts. Returns rows deleted."""
+    slug = pg._get_slug()
+    return pg.execute(
+        "DELETE FROM executions WHERE tenant_slug = %s AND started_at < %s",
+        (slug, cutoff_ts),
+    )
+
+
 def get_webhook_payloads(limit: int = 50) -> list[dict]:
     """Get recent webhook payloads from execution steps."""
     slug = pg._get_slug()
