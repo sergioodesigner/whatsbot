@@ -341,36 +341,9 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
         # Start background tasks for each tenant
         all_tasks = []
         for ctx in registry.active():
-            ctx.state.stop_event.clear()
-            # Build a ServerDeps for background tasks (they need concrete objects)
-            tenant_deps = ServerDeps(
-                settings=ctx.settings,
-                gowa_manager=ctx.gowa_manager,
-                gowa_client=ctx.gowa_client,
-                agent_handler=ctx.agent_handler,
-                ws_manager=ctx.ws_manager,
-                state=ctx.state,
-                memory_log_handler=_memory_log_handler,
-                statics_senditems_dir=ctx.data_dir / "statics" / "senditems",
-            )
+            _start_tenant_tasks(ctx)
 
-            # Wrap each background task to set the correct tenant context
-            async def _with_tenant_ctx(coro_fn, t_deps, db_name):
-                token = current_tenant_db.set(db_name)
-                try:
-                    await coro_fn(t_deps)
-                finally:
-                    current_tenant_db.reset(token)
-
-            all_tasks.extend([
-                asyncio.create_task(_with_tenant_ctx(start_gowa_task, tenant_deps, ctx.db_name)),
-                asyncio.create_task(_with_tenant_ctx(status_poll_loop, tenant_deps, ctx.db_name)),
-                asyncio.create_task(_with_tenant_ctx(qr_poll_loop, tenant_deps, ctx.db_name)),
-                asyncio.create_task(_with_tenant_ctx(avatar_fetch_task, tenant_deps, ctx.db_name)),
-            ])
-
-        logger.info("Started %d background tasks for %d tenants.",
-                     len(all_tasks), len(registry.active()))
+        logger.info("Started background tasks for %d tenants.", len(registry.active()))
         yield
 
         # Shutdown
@@ -642,7 +615,32 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
     automations.register_routes(app, deps)
     update.register_routes(app, deps)
 
+    # Helper to start tasks for a tenant dynamically
+    def _start_tenant_tasks(ctx):
+        ctx.state.stop_event.clear()
+        tenant_deps = ServerDeps(
+            settings=ctx.settings,
+            gowa_manager=ctx.gowa_manager,
+            gowa_client=ctx.gowa_client,
+            agent_handler=ctx.agent_handler,
+            ws_manager=ctx.ws_manager,
+            state=ctx.state,
+            memory_log_handler=_memory_log_handler,
+            statics_senditems_dir=ctx.data_dir / "statics" / "senditems",
+        )
+        async def _with_tenant_ctx(coro_fn, t_deps, db_name):
+            token = current_tenant_db.set(db_name)
+            try:
+                await coro_fn(t_deps)
+            finally:
+                current_tenant_db.reset(token)
+
+        asyncio.create_task(_with_tenant_ctx(start_gowa_task, tenant_deps, ctx.db_name))
+        asyncio.create_task(_with_tenant_ctx(status_poll_loop, tenant_deps, ctx.db_name))
+        asyncio.create_task(_with_tenant_ctx(qr_poll_loop, tenant_deps, ctx.db_name))
+        asyncio.create_task(_with_tenant_ctx(avatar_fetch_task, tenant_deps, ctx.db_name))
+
     # Register superadmin routes
-    admin.register_routes(app, registry)
+    admin.register_routes(app, registry, on_tenant_started=_start_tenant_tasks)
 
     return app

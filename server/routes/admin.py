@@ -32,7 +32,7 @@ def _require_superadmin(request: Request) -> bool:
     return current_tenant_slug.get() == "__superadmin__"
 
 
-def register_routes(app, registry):
+def register_routes(app, registry, on_tenant_started=None):
     def _with_tenant(slug: str):
         ctx = registry.get_by_slug(slug)
         if not ctx:
@@ -179,6 +179,8 @@ def register_routes(app, registry):
             kwargs["openrouter_api_key"] = body["openrouter_api_key"]
 
         ctx = registry.create_tenant(slug, name, **kwargs)
+        if on_tenant_started and ctx:
+            on_tenant_started(ctx)
         tenant_data = tenant_repo.get_by_slug(slug)
         logger.info("Tenant created via admin: %s (%s)", slug, name)
         return _ok(tenant_data)
@@ -239,7 +241,9 @@ def register_routes(app, registry):
         if not tenant_repo.get_by_slug(slug):
             return _err("Empresa não encontrada.", status=404)
 
-        registry.activate_tenant(slug)
+        ctx = registry.activate_tenant(slug)
+        if on_tenant_started and ctx:
+            on_tenant_started(ctx)
         logger.info("Tenant activated via admin: %s", slug)
         return _ok({"message": f"Empresa '{slug}' reativada."})
 

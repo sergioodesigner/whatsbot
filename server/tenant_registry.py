@@ -199,6 +199,7 @@ class TenantRegistry:
         ctx = self._tenants.get(slug)
         if ctx:
             try:
+                ctx.state.stop_event.set()
                 ctx.gowa_manager.stop()
             except Exception as e:
                 logger.error("Error stopping GOWA for tenant '%s': %s", slug, e)
@@ -216,6 +217,7 @@ class TenantRegistry:
         ctx = self._tenants.pop(slug, None)
         if ctx:
             try:
+                ctx.state.stop_event.set()
                 ctx.gowa_manager.stop()
             except Exception:
                 pass
