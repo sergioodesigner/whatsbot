@@ -288,6 +288,7 @@ def fetchone(sql: str, params: tuple = ()) -> dict | None:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             row = cur.fetchone()
+            conn.rollback()  # Clear transaction state for SELECT
             return dict(row) if row else None
 
 
@@ -296,6 +297,7 @@ def fetchall(sql: str, params: tuple = ()) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             rows = cur.fetchall()
+            conn.rollback()  # Clear transaction state for SELECT
             return [dict(r) for r in rows]
 
 

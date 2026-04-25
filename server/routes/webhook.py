@@ -163,7 +163,7 @@ def register_routes(app, deps):
             "[Webhook] Media file not found for sync. raw=%r normalized=%r tried=%s",
             media_path, normalized, [str(p) for p in candidates]
         )
-        return normalized
+        return f"statics/{normalized}" if not normalized.startswith("statics/") else normalized
 
     def _download_media_from_url(media_url: str, fallback_ext: str = "bin") -> str | None:
         """Download media from URL and save into tenant statics/media."""
@@ -931,13 +931,15 @@ def register_routes(app, deps):
         has_video_payload = bool(data.get("video"))
         if raw_image:
             if isinstance(raw_image, str):
-                image_path = _resolve_media_field(
+                image_path = await asyncio.to_thread(
+                    _resolve_media_field,
                     raw_image, "jpg", message_id=msg_id,
                     original_filename=original_filename,
                     original_media_type=original_media_type,
                 )
             elif isinstance(raw_image, dict):
-                image_path = _resolve_media_field(
+                image_path = await asyncio.to_thread(
+                    _resolve_media_field,
                     raw_image, "jpg", message_id=msg_id,
                     original_filename=original_filename,
                     original_media_type=original_media_type,
@@ -948,13 +950,15 @@ def register_routes(app, deps):
         raw_audio = data.get("audio")
         if raw_audio:
             if isinstance(raw_audio, str):
-                audio_path = _resolve_media_field(
+                audio_path = await asyncio.to_thread(
+                    _resolve_media_field,
                     raw_audio, "ogg", message_id=msg_id,
                     original_filename=original_filename,
                     original_media_type=original_media_type,
                 )
             elif isinstance(raw_audio, dict):
-                audio_path = _resolve_media_field(
+                audio_path = await asyncio.to_thread(
+                    _resolve_media_field,
                     raw_audio, "ogg", message_id=msg_id,
                     original_filename=original_filename,
                     original_media_type=original_media_type,
@@ -964,7 +968,8 @@ def register_routes(app, deps):
         raw_video = data.get("video")
         if raw_video:
             if isinstance(raw_video, str):
-                candidate = _resolve_media_field(
+                candidate = await asyncio.to_thread(
+                    _resolve_media_field,
                     raw_video, "mp4", message_id=msg_id,
                     original_filename=original_filename,
                     original_media_type=original_media_type,
@@ -974,7 +979,8 @@ def register_routes(app, deps):
                 elif candidate:
                     video_path = candidate
             elif isinstance(raw_video, dict):
-                candidate = _resolve_media_field(
+                candidate = await asyncio.to_thread(
+                    _resolve_media_field,
                     raw_video, "mp4", message_id=msg_id,
                     original_filename=original_filename,
                     original_media_type=original_media_type,
