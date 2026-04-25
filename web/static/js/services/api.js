@@ -30,6 +30,19 @@ function _authHeaders(headers = {}) {
   return headers;
 }
 
+async function _parseJsonSafe(res) {
+  const raw = await res.text();
+  if (!raw) return { ok: res.ok, data: null };
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {
+      ok: false,
+      error: raw.slice(0, 300) || `Erro HTTP ${res.status}`,
+    };
+  }
+}
+
 async function request(method, path, body) {
   const opts = {
     method,
@@ -42,7 +55,7 @@ async function request(method, path, body) {
     window.dispatchEvent(new Event('whatsbot:unauthorized'));
     return { ok: false, error: 'Não autenticado.' };
   }
-  return res.json();
+  return _parseJsonSafe(res);
 }
 
 export async function getConfig() {
@@ -149,7 +162,7 @@ export async function sendImage(phone, file, caption = '') {
     window.dispatchEvent(new Event('whatsbot:unauthorized'));
     return { ok: false, error: 'Não autenticado.' };
   }
-  return res.json();
+  return _parseJsonSafe(res);
 }
 
 export async function sendAudio(phone, blob, filename = 'voice.ogg') {
@@ -165,7 +178,7 @@ export async function sendAudio(phone, blob, filename = 'voice.ogg') {
     window.dispatchEvent(new Event('whatsbot:unauthorized'));
     return { ok: false, error: 'Não autenticado.' };
   }
-  return res.json();
+  return _parseJsonSafe(res);
 }
 
 export async function sendPresence(phone, action = 'start') {
@@ -332,5 +345,5 @@ export async function checkAuth() {
     headers: _authHeaders({ 'Content-Type': 'application/json' }),
   };
   const res = await fetch(`${BASE}/api/auth/check`, opts);
-  return res.json();
+  return _parseJsonSafe(res);
 }

@@ -99,7 +99,17 @@ def create_tenant_middleware(registry, base_domain: str):
 
         # No subdomain resolved — might be the base domain itself
         if not subdomain or subdomain in RESERVED_SUBDOMAINS:
-            # Allow request to pass through (could be the landing page or admin)
+            # In SaaS mode, tenant API routes must always have tenant context.
+            # Otherwise route handlers may raise RuntimeError when reading deps.
+            if path.startswith("/api/") and not path.startswith(("/api/admin/", "/api/webhook")):
+                return JSONResponse(
+                    {
+                        "ok": False,
+                        "error": "Tenant não resolvido. Acesse via subdomínio da empresa.",
+                    },
+                    status_code=404,
+                )
+            # Allow non-API routes to pass through (landing page/admin frontend)
             return await call_next(request)
 
         tenant = registry.get_by_slug(subdomain)

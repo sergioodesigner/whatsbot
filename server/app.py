@@ -164,6 +164,17 @@ class TenantAwareDeps:
         return self._statics_senditems_dir_proxy
 
 
+def _register_common_exception_handlers(app: FastAPI) -> None:
+    """Return JSON for uncaught errors to keep frontend contract stable."""
+    @app.exception_handler(Exception)
+    async def _handle_unexpected_error(request: Request, exc: Exception):  # noqa: ARG001
+        logger.exception("Unhandled server exception: %s", exc)
+        return JSONResponse(
+            {"ok": False, "error": "Erro interno do servidor."},
+            status_code=500,
+        )
+
+
 # ── Factory (Single-Tenant — existing behavior) ──────────────────────────
 
 def create_app(
@@ -235,6 +246,7 @@ def create_app(
     # ── FastAPI App ───────────────────────────────────────────────────
 
     app = FastAPI(title="WhatsBot", lifespan=lifespan)
+    _register_common_exception_handlers(app)
 
     # Mount static files (frontend assets)
     static_dir = web_dir / "static"
@@ -355,6 +367,7 @@ def create_saas_app(registry, base_domain: str) -> FastAPI:
     # ── FastAPI App ───────────────────────────────────────────────────
 
     app = FastAPI(title="WhatsBot SaaS", lifespan=lifespan)
+    _register_common_exception_handlers(app)
 
     # Mount static files (frontend assets — shared across all tenants)
     static_dir = web_dir / "static"
