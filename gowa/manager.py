@@ -65,7 +65,6 @@ class GOWAManager:
         cmd.extend(["--webhook-events", "message,chat_presence,message.ack"])
         # Must be "available" to receive typing events from contacts
         cmd.extend(["--presence-on-connect", "available"])
-        cmd.extend(["--os", "Techify - WhatsBot"])
 
         logger.info("Starting GOWA: %s", " ".join(cmd))
         logger.info("GOWA working directory: %s", self.data_dir)
