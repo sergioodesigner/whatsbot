@@ -140,6 +140,10 @@ CREATE TABLE IF NOT EXISTS messages (
     status     TEXT,
     msg_id     TEXT
 );
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type TEXT;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_path TEXT;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS status TEXT;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS msg_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_msg_tenant_contact_ts ON messages(tenant_slug, contact_id, ts);
 CREATE INDEX IF NOT EXISTS idx_msg_tenant_id ON messages(tenant_slug, msg_id);
 
@@ -229,6 +233,11 @@ def init_tenant_pg_schema() -> None:
     with get_pg_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(_TENANT_SCHEMA_PG)
+            # Ensure new columns exist for installations that ran setup scripts before these were added
+            cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type TEXT;")
+            cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_path TEXT;")
+            cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS status TEXT;")
+            cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS msg_id TEXT;")
         conn.commit()
     logger.info("Supabase tenant schema initialised (Phases 3/4).")
 
