@@ -167,14 +167,36 @@ async def avatar_fetch_task(deps):
         phone = c.get("phone", "")
         if not phone:
             continue
+        from db.storage_provider import get_provider
+        from server.tenant import current_tenant_slug
+        slug = current_tenant_slug.get() or "single_tenant_default"
+        provider = get_provider()
+
+        object_key = f"{slug}/{phone}.jpg"
+        url = provider.public_url("avatars", object_key)
+        
         avatar_path = avatars_dir / f"{phone}.jpg"
-        if avatar_path.exists():
+        
+        exists = False
+        if url.startswith("http"):
+            import httpx
+            try:
+                with httpx.Client(timeout=3.0) as client:
+                    resp = client.head(url)
+                    exists = resp.status_code < 400
+            except Exception:
+                pass
+        else:
+            exists = avatar_path.exists()
+
+        if exists:
             skipped += 1
             continue
+            
         try:
             data = await asyncio.to_thread(gowa_client.get_avatar, phone)
-            if data and isinstance(data, bytes):
-                avatar_path.write_bytes(data)
+            if data and isinstance(data, bytes) and len(data) > 100:
+                provider.upload("avatars", object_key, data, content_type="image/jpeg")
                 fetched += 1
                 logger.info("[Avatar] Fetched avatar for %s", phone)
             else:

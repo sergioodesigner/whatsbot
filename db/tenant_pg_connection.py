@@ -140,10 +140,6 @@ CREATE TABLE IF NOT EXISTS messages (
     status     TEXT,
     msg_id     TEXT
 );
-ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type TEXT;
-ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_path TEXT;
-ALTER TABLE messages ADD COLUMN IF NOT EXISTS status TEXT;
-ALTER TABLE messages ADD COLUMN IF NOT EXISTS msg_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_msg_tenant_contact_ts ON messages(tenant_slug, contact_id, ts);
 CREATE INDEX IF NOT EXISTS idx_msg_tenant_id ON messages(tenant_slug, msg_id);
 
@@ -230,15 +226,35 @@ def init_tenant_pg_schema() -> None:
     """
     if not (is_crm_supabase_backend() or is_core_supabase_backend()):
         return
-    with get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_TENANT_SCHEMA_PG)
-            # Ensure new columns exist for installations that ran setup scripts before these were added
-            cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type TEXT;")
-            cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_path TEXT;")
-            cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS status TEXT;")
-            cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS msg_id TEXT;")
-        conn.commit()
+    
+    # 1. Main schema creation
+    try:
+        with get_pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_TENANT_SCHEMA_PG)
+            conn.commit()
+    except Exception as e:
+        logger.warning("Could not execute main tenant schema DDL (might be locked): %s", e)
+
+    # 2. Schema patches (Add missing columns gracefully without crashing on timeout)
+    patches = [
+        "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type TEXT;",
+        "ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_path TEXT;",
+        "ALTER TABLE messages ADD COLUMN IF NOT EXISTS status TEXT;",
+        "ALTER TABLE messages ADD COLUMN IF NOT EXISTS msg_id TEXT;",
+    ]
+    
+    for patch in patches:
+        try:
+            with get_pg_conn() as conn:
+                with conn.cursor() as cur:
+                    # Set a very short statement timeout for schema patches on startup
+                    cur.execute("SET statement_timeout = '2s';")
+                    cur.execute(patch)
+                conn.commit()
+        except Exception as e:
+            logger.warning("Skipped schema patch '%s' due to timeout or error: %s", patch, e)
+            
     logger.info("Supabase tenant schema initialised (Phases 3/4).")
 
 

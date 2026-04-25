@@ -86,16 +86,24 @@ def register_routes(app, deps):
             return None
 
         data_dir = Path(settings.data_dir)
-        statics_media_dir = data_dir / "statics" / "media"
-        statics_media_dir.mkdir(parents=True, exist_ok=True)
-
-        # Keep only filename inside statics/media to avoid unexpected nesting.
         filename = Path(normalized).name
         raw_filename = Path(raw_clean).name if raw_clean else ""
         candidate_names = [n for n in dict.fromkeys([filename, raw_filename]) if n]
-        dest = statics_media_dir / filename
-        if dest.exists():
-            return f"statics/media/{filename}"
+        
+        from db.storage_provider import get_provider
+        slug = current_tenant_slug.get()
+        if not slug or slug == "default":
+            slug = "single_tenant_default"
+        object_key = f"{slug}/{filename}"
+
+        def _upload_file(src_path: Path) -> str:
+            mime, _ = mimetypes.guess_type(str(src_path))
+            content = src_path.read_bytes()
+            url = get_provider().upload("media", object_key, content, content_type=mime or "application/octet-stream")
+            return url
+
+        # If it's already uploaded and we use local fallback, it might exist. For Supabase, we skip check.
+        # But we don't have a fast check for Supabase, so we just try to upload if we find the source file.
 
         candidates: list[Path] = []
         for name in candidate_names:
@@ -110,8 +118,8 @@ def register_routes(app, deps):
         for src in candidates:
             try:
                 if src.is_file():
-                    shutil.copy2(src, dest)
-                    return f"statics/media/{filename}"
+                    url = _upload_file(src)
+                    return url
             except Exception:
                 continue
 
@@ -124,18 +132,18 @@ def register_routes(app, deps):
                 for name in candidate_names:
                     for found in root.rglob(name):
                         if found.is_file():
-                            shutil.copy2(found, dest)
+                            url = _upload_file(found)
                             logger.info("[Webhook] Media synced from recursive exact match: %s", found)
-                            return f"statics/media/{filename}"
+                            return url
 
                 # Some GOWA builds may append codec suffixes to the saved filename.
                 # Search by stable prefix and copy to a clean target filename.
                 prefix = Path(filename).stem
                 for found in root.rglob(f"{prefix}*"):
                     if found.is_file():
-                        shutil.copy2(found, dest)
+                        url = _upload_file(found)
                         logger.info("[Webhook] Media synced from recursive prefix match: %s", found)
-                        return f"statics/media/{filename}"
+                        return url
             except Exception:
                 continue
 
@@ -147,8 +155,7 @@ def register_routes(app, deps):
                 for src in candidates:
                     try:
                         if src.is_file():
-                            shutil.copy2(src, dest)
-                            return f"statics/media/{filename}"
+                            return _upload_file(src)
                     except Exception:
                         continue
 
@@ -162,17 +169,12 @@ def register_routes(app, deps):
         """Download media from URL and save into tenant statics/media."""
         if not media_url or not str(media_url).startswith(("http://", "https://")):
             return None
-        data_dir = Path(settings.data_dir)
-        statics_media_dir = data_dir / "statics" / "media"
-        statics_media_dir.mkdir(parents=True, exist_ok=True)
-
         url_no_query = str(media_url).split("?", 1)[0]
         ext = Path(url_no_query).suffix.lower().lstrip(".")
         if not ext:
             ext = fallback_ext
         ext = re.sub(r"[^a-z0-9]", "", ext.lower()) or fallback_ext
         filename = f"{int(time.time())}-{uuid.uuid4()}.{ext}"
-        dest = statics_media_dir / filename
 
         try:
             with httpx.Client(timeout=25.0, follow_redirects=True) as client:
@@ -180,8 +182,16 @@ def register_routes(app, deps):
                 resp.raise_for_status()
                 if not resp.content:
                     return None
-                dest.write_bytes(resp.content)
-                return f"statics/media/{filename}"
+                
+                from db.storage_provider import get_provider
+                slug = current_tenant_slug.get()
+                if not slug or slug == "default":
+                    slug = "single_tenant_default"
+                object_key = f"{slug}/{filename}"
+                
+                content_type = resp.headers.get("content-type", "application/octet-stream")
+                url = get_provider().upload("media", object_key, resp.content, content_type=content_type)
+                return url
         except Exception as e:
             logger.warning("[Webhook] Failed to download media URL %s: %s", media_url, e)
             return None
@@ -214,13 +224,19 @@ def register_routes(app, deps):
 
         safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", message_id)[:80]
         filename = f"{int(time.time())}-{safe_id}.{ext}"
-        statics_media_dir = Path(settings.data_dir) / "statics" / "media"
-        statics_media_dir.mkdir(parents=True, exist_ok=True)
-        dest = statics_media_dir / filename
+
         try:
-            dest.write_bytes(data)
-            logger.info("[Webhook] Media downloaded via /message/{id}/download -> %s", filename)
-            return f"statics/media/{filename}"
+            from db.storage_provider import get_provider
+            slug = current_tenant_slug.get()
+            if not slug or slug == "default":
+                slug = "single_tenant_default"
+            
+            object_key = f"{slug}/{filename}"
+            url = get_provider().upload(
+                "media", object_key, data, content_type=content_type or "application/octet-stream"
+            )
+            logger.info("[Webhook] Media downloaded via /message/{id}/download -> %s", url)
+            return url
         except Exception as e:
             logger.warning("[Webhook] Failed to persist downloaded media for %s: %s", message_id, e)
             return None

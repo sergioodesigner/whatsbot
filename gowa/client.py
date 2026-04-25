@@ -235,21 +235,25 @@ class GOWAClient:
         }
         return self._request("POST", "/send/message", raise_on_error=True, json=payload)
 
-    def send_image(self, phone: str, image_path: str, caption: str = "") -> dict:
+    def send_image(self, phone: str, image_path: str = "", caption: str = "", image_data: bytes | None = None, filename: str = "image.png") -> dict:
         """Send an image to a phone number or group via multipart/form-data. Raises GOWASendError on failure."""
         phone = self._format_target(phone)
         url = f"{self.base_url}/send/image"
-        mime = mimetypes.guess_type(image_path)[0] or "image/png"
+        mime = mimetypes.guess_type(image_path or filename)[0] or "image/png"
         try:
             with httpx.Client(timeout=30.0) as client:
-                with open(image_path, "rb") as f:
-                    files = {"image": (Path(image_path).name, f, mime)}
-                    data = {"phone": phone}
-                    if caption:
-                        data["caption"] = caption
-                    resp = client.post(url, headers=self._headers, data=data, files=files)
-                    resp.raise_for_status()
-                    return resp.json() if resp.text else {}
+                if image_data:
+                    files = {"image": (Path(image_path).name if image_path else filename, image_data, mime)}
+                else:
+                    with open(image_path, "rb") as f:
+                        files = {"image": (Path(image_path).name, f.read(), mime)}
+                
+                data = {"phone": phone}
+                if caption:
+                    data["caption"] = caption
+                resp = client.post(url, headers=self._headers, data=data, files=files)
+                resp.raise_for_status()
+                return resp.json() if resp.text else {}
         except httpx.ConnectError:
             raise GOWASendError(
                 "WhatsApp não está acessível. Verifique se o serviço está rodando.",
@@ -271,19 +275,23 @@ class GOWAClient:
         except Exception as e:
             raise GOWASendError(f"Erro ao enviar imagem: {e}", error_type="unknown")
 
-    def send_audio(self, phone: str, audio_path: str) -> dict:
+    def send_audio(self, phone: str, audio_path: str = "", audio_data: bytes | None = None, filename: str = "audio.ogg") -> dict:
         """Send an audio file to a phone number or group via multipart/form-data. Raises GOWASendError on failure."""
         phone = self._format_target(phone)
         url = f"{self.base_url}/send/audio"
-        mime = mimetypes.guess_type(audio_path)[0] or "audio/ogg"
+        mime = mimetypes.guess_type(audio_path or filename)[0] or "audio/ogg"
         try:
             with httpx.Client(timeout=30.0) as client:
-                with open(audio_path, "rb") as f:
-                    files = {"audio": (Path(audio_path).name, f, mime)}
-                    data = {"phone": phone, "ptt": "true"}
-                    resp = client.post(url, headers=self._headers, data=data, files=files)
-                    resp.raise_for_status()
-                    return resp.json() if resp.text else {}
+                if audio_data:
+                    files = {"audio": (Path(audio_path).name if audio_path else filename, audio_data, mime)}
+                else:
+                    with open(audio_path, "rb") as f:
+                        files = {"audio": (Path(audio_path).name, f.read(), mime)}
+
+                data = {"phone": phone, "ptt": "true"}
+                resp = client.post(url, headers=self._headers, data=data, files=files)
+                resp.raise_for_status()
+                return resp.json() if resp.text else {}
         except httpx.ConnectError:
             raise GOWASendError(
                 "WhatsApp não está acessível. Verifique se o serviço está rodando.",

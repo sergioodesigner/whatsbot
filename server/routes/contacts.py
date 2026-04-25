@@ -132,16 +132,23 @@ def register_routes(app, deps):
             return media_path
 
         data_dir = Path(settings.data_dir)
-        statics_media_dir = data_dir / "statics" / "media"
-        statics_media_dir.mkdir(parents=True, exist_ok=True)
-
         filename = Path(normalized).name
         raw_filename = Path(raw_clean).name if raw_clean else ""
         candidate_names = [n for n in dict.fromkeys([filename, raw_filename]) if n]
-        dest_rel = f"statics/media/{filename}"
-        dest_abs = statics_media_dir / filename
-        if dest_abs.exists():
-            return dest_rel
+        
+        from db.storage_provider import get_provider
+        from server.tenant import current_tenant_slug
+        slug = current_tenant_slug.get()
+        if not slug or slug == "default":
+            slug = "single_tenant_default"
+        object_key = f"{slug}/{filename}"
+
+        def _upload_file(src_path: Path) -> str:
+            import mimetypes
+            mime, _ = mimetypes.guess_type(str(src_path))
+            content = src_path.read_bytes()
+            url = get_provider().upload("media", object_key, content, content_type=mime or "application/octet-stream")
+            return url
 
         candidates: list[Path] = []
         for name in candidate_names:
@@ -158,8 +165,8 @@ def register_routes(app, deps):
         for src in candidates:
             try:
                 if src.is_file():
-                    shutil.copy2(src, dest_abs)
-                    return dest_rel
+                    url = _upload_file(src)
+                    return url
             except Exception:
                 continue
 
@@ -171,15 +178,15 @@ def register_routes(app, deps):
                 for name in candidate_names:
                     for found in root.rglob(name):
                         if found.is_file():
-                            shutil.copy2(found, dest_abs)
+                            url = _upload_file(found)
                             logger.info("[Contacts] Legacy media repaired from recursive exact match: %s", found)
-                            return dest_rel
+                            return url
                 prefix = Path(filename).stem
                 for found in root.rglob(f"{prefix}*"):
                     if found.is_file():
-                        shutil.copy2(found, dest_abs)
+                        url = _upload_file(found)
                         logger.info("[Contacts] Legacy media repaired from recursive prefix match: %s", found)
-                        return dest_rel
+                        return url
             except Exception:
                 continue
 
@@ -460,22 +467,27 @@ def register_routes(app, deps):
         caption: str = Form(""),
     ):
         """Send an image to a contact (operator-initiated)."""
-        senditems_dir, media_dir = _resolve_media_dirs()
         suffix = Path(image.filename or "img.png").suffix or ".png"
-        media_name = f"{int(time.time() * 1000)}{suffix}"
-        dest = senditems_dir / media_name
-        stable_dest = media_dir / media_name
+        filename = f"{int(time.time() * 1000)}{suffix}"
         content = await image.read()
-        dest.write_bytes(content)
-        # Keep a stable chat copy under statics/media for history rendering.
+
+        from db.storage_provider import get_provider
+        from server.tenant import current_tenant_slug
+        slug = current_tenant_slug.get()
+        if not slug or slug == "default":
+            slug = "single_tenant_default"
+        
+        object_key = f"{slug}/{filename}"
+        mime = image.content_type or "image/png"
+        rel_path = ""
         try:
-            stable_dest.write_bytes(content)
+            rel_path = get_provider().upload("media", object_key, content, content_type=mime)
         except Exception as e:
-            logger.warning("[Send] Could not mirror image to statics/media (%s): %s", stable_dest, e)
+            logger.warning("[Send] Could not upload image to StorageProvider: %s", e)
 
         send_result = None
         try:
-            send_result = await asyncio.to_thread(gowa_client.send_image, phone, str(dest), caption)
+            send_result = await asyncio.to_thread(gowa_client.send_image, phone, caption=caption, image_data=content, filename=filename)
         except GOWASendError as e:
             logger.error("[Send] Failed to send image to %s: %s", phone, e)
             await ws_manager.broadcast("new_message", {
@@ -501,8 +513,9 @@ def register_routes(app, deps):
 
         msg_id = extract_msg_id(send_result)
 
-        # Use stable media path in chat history to avoid broken previews on reload.
-        rel_path = f"statics/media/{media_name}"
+        if not rel_path:
+            rel_path = f"statics/media/{filename}"
+
         msg_data = {
             "role": "assistant",
             "content": caption,
@@ -526,21 +539,27 @@ def register_routes(app, deps):
         audio: UploadFile = File(...),
     ):
         """Send an audio file to a contact (operator-initiated)."""
-        senditems_dir, media_dir = _resolve_media_dirs()
         suffix = Path(audio.filename or "voice.ogg").suffix or ".ogg"
-        media_name = f"{int(time.time() * 1000)}{suffix}"
-        dest = senditems_dir / media_name
-        stable_dest = media_dir / media_name
+        filename = f"{int(time.time() * 1000)}{suffix}"
         content = await audio.read()
-        dest.write_bytes(content)
+
+        from db.storage_provider import get_provider
+        from server.tenant import current_tenant_slug
+        slug = current_tenant_slug.get()
+        if not slug or slug == "default":
+            slug = "single_tenant_default"
+        
+        object_key = f"{slug}/{filename}"
+        mime = audio.content_type or "audio/ogg"
+        rel_path = ""
         try:
-            stable_dest.write_bytes(content)
+            rel_path = get_provider().upload("media", object_key, content, content_type=mime)
         except Exception as e:
-            logger.warning("[Send] Could not mirror audio to statics/media (%s): %s", stable_dest, e)
+            logger.warning("[Send] Could not upload audio to StorageProvider: %s", e)
 
         send_result = None
         try:
-            send_result = await asyncio.to_thread(gowa_client.send_audio, phone, str(dest))
+            send_result = await asyncio.to_thread(gowa_client.send_audio, phone, audio_data=content, filename=filename)
         except GOWASendError as e:
             logger.error("[Send] Failed to send audio to %s: %s", phone, e)
             await ws_manager.broadcast("new_message", {
@@ -566,7 +585,9 @@ def register_routes(app, deps):
 
         msg_id = extract_msg_id(send_result)
 
-        rel_path = f"statics/media/{media_name}"
+        if not rel_path:
+            rel_path = f"statics/media/{filename}"
+            
         msg_data = {
             "role": "assistant",
             "content": "[Áudio]",
@@ -621,12 +642,37 @@ def register_routes(app, deps):
 
     @app.get("/api/contacts/{phone}/avatar")
     async def get_contact_avatar(phone: str):
-        """Return contact's WhatsApp profile photo (cached on disk)."""
+        """Return contact's WhatsApp profile photo (cached on disk or in storage)."""
+        from db.storage_provider import get_provider
+        from server.tenant import current_tenant_slug
+        from fastapi.responses import RedirectResponse
+        import httpx
+
+        slug = current_tenant_slug.get() or "single_tenant_default"
+        object_key = f"{slug}/{phone}.jpg"
+        provider = get_provider()
+
+        url = provider.public_url("avatars", object_key)
+        
+        # Fast local path for single-tenant or local mode
         avatars_dir = statics_senditems_dir.parent / "avatars"
         avatars_dir.mkdir(parents=True, exist_ok=True)
         avatar_path = avatars_dir / f"{phone}.jpg"
 
-        if avatar_path.exists():
+        exists = False
+        if url.startswith("http"):
+            try:
+                with httpx.Client(timeout=3.0) as client:
+                    resp = client.head(url)
+                    exists = resp.status_code < 400
+            except Exception:
+                pass
+        else:
+            exists = avatar_path.exists()
+
+        if exists:
+            if url.startswith("http"):
+                return RedirectResponse(url)
             return FileResponse(str(avatar_path), media_type="image/jpeg")
 
         # Fetch from GOWA on-demand
@@ -635,9 +681,12 @@ def register_routes(app, deps):
         except Exception:
             data = None
 
-        if data and isinstance(data, bytes):
-            avatar_path.write_bytes(data)
-            return FileResponse(str(avatar_path), media_type="image/jpeg")
+        if data and isinstance(data, bytes) and len(data) > 100:
+            new_url = provider.upload("avatars", object_key, data, content_type="image/jpeg")
+            if new_url.startswith("http"):
+                return RedirectResponse(new_url)
+            else:
+                return FileResponse(str(avatar_path), media_type="image/jpeg")
 
         return Response(status_code=204)
 

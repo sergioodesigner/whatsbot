@@ -73,7 +73,12 @@ class LocalStorageProvider(StorageProvider):
         self.data_dir = data_dir
 
     def _resolve(self, bucket: str, object_key: str) -> Path:
-        path = self.data_dir / "statics" / bucket / object_key
+        parts = object_key.split("/", 1)
+        if len(parts) == 2:
+            slug, filename = parts
+            path = self.data_dir / "tenants" / slug / "statics" / bucket / filename
+        else:
+            path = self.data_dir / "statics" / bucket / object_key
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
@@ -81,9 +86,13 @@ class LocalStorageProvider(StorageProvider):
                content_type: str = "application/octet-stream") -> str:
         dest = self._resolve(bucket, object_key)
         dest.write_bytes(data)
-        return f"statics/{bucket}/{object_key}"
+        return self.public_url(bucket, object_key)
 
     def public_url(self, bucket: str, object_key: str) -> str:
+        parts = object_key.split("/", 1)
+        if len(parts) == 2:
+            slug, filename = parts
+            return f"statics/{bucket}/{filename}"
         return f"statics/{bucket}/{object_key}"
 
     def delete(self, bucket: str, object_key: str) -> None:
