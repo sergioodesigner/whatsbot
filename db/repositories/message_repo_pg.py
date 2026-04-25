@@ -90,26 +90,25 @@ def update_status(contact_id: int, content: str, new_status: str | None,
                    msg_id: str | None = None) -> None:
     """Update status of the most recent message matching content (for retry-send)."""
     slug = pg._get_slug()
-    with pg.get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """SELECT id FROM messages
-                   WHERE contact_id = %s AND content = %s AND status = 'failed' AND tenant_slug = %s
-                   ORDER BY ts DESC LIMIT 1""",
-                (contact_id, content, slug),
-            )
-            row = cur.fetchone()
-            if row:
-                if msg_id:
-                    cur.execute(
-                        "UPDATE messages SET status = %s, msg_id = %s WHERE id = %s AND tenant_slug = %s",
-                        (new_status, msg_id, row["id"], slug),
-                    )
-                else:
-                    cur.execute(
-                        "UPDATE messages SET status = %s WHERE id = %s AND tenant_slug = %s",
-                        (new_status, row["id"], slug),
-                    )
+    with pg.dict_cursor() as (conn, cur):
+        cur.execute(
+            """SELECT id FROM messages
+               WHERE contact_id = %s AND content = %s AND status = 'failed' AND tenant_slug = %s
+               ORDER BY ts DESC LIMIT 1""",
+            (contact_id, content, slug),
+        )
+        row = cur.fetchone()
+        if row:
+            if msg_id:
+                cur.execute(
+                    "UPDATE messages SET status = %s, msg_id = %s WHERE id = %s AND tenant_slug = %s",
+                    (new_status, msg_id, row["id"], slug),
+                )
+            else:
+                cur.execute(
+                    "UPDATE messages SET status = %s WHERE id = %s AND tenant_slug = %s",
+                    (new_status, row["id"], slug),
+                )
         conn.commit()
 
 
@@ -118,47 +117,46 @@ def update_status_by_msg_id(msg_id: str, new_status: str) -> list[str]:
     slug = pg._get_slug()
     updated_msg_ids = []
 
-    with pg.get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """UPDATE messages SET status = %s
-                   WHERE msg_id = %s AND tenant_slug = %s
-                     AND status IS NOT NULL
-                     AND status IN ('sent', 'delivered', 'operator')
-                   RETURNING msg_id""",
-                (new_status, msg_id, slug),
-            )
-            if cur.rowcount > 0:
-                updated_msg_ids.append(msg_id)
+    with pg.dict_cursor() as (conn, cur):
+        cur.execute(
+            """UPDATE messages SET status = %s
+               WHERE msg_id = %s AND tenant_slug = %s
+                 AND status IS NOT NULL
+                 AND status IN ('sent', 'delivered', 'operator')
+               RETURNING msg_id""",
+            (new_status, msg_id, slug),
+        )
+        if cur.rowcount > 0:
+            updated_msg_ids.append(msg_id)
 
+        cur.execute(
+            "SELECT contact_id, ts FROM messages WHERE msg_id = %s AND tenant_slug = %s",
+            (msg_id, slug),
+        )
+        row = cur.fetchone()
+        if row:
+            c_id, c_ts = row["contact_id"], row["ts"]
+            prior_statuses = ('sent', 'operator') if new_status == 'delivered' else ('sent', 'delivered', 'operator')
+            placeholders = ','.join('%s' for _ in prior_statuses)
+            
             cur.execute(
-                "SELECT contact_id, ts FROM messages WHERE msg_id = %s AND tenant_slug = %s",
-                (msg_id, slug),
+                f"""SELECT msg_id FROM messages
+                    WHERE contact_id = %s AND role = 'assistant' AND tenant_slug = %s
+                      AND ts <= %s AND status IN ({placeholders})
+                      AND msg_id IS NOT NULL AND msg_id != %s""",
+                (c_id, slug, c_ts, *prior_statuses, msg_id),
             )
-            row = cur.fetchone()
-            if row:
-                c_id, c_ts = row["contact_id"], row["ts"]
-                prior_statuses = ('sent', 'operator') if new_status == 'delivered' else ('sent', 'delivered', 'operator')
-                placeholders = ','.join('%s' for _ in prior_statuses)
-                
+            prior_rows = cur.fetchall()
+            cascaded_ids = [r["msg_id"] for r in prior_rows]
+            
+            if cascaded_ids:
                 cur.execute(
-                    f"""SELECT msg_id FROM messages
+                    f"""UPDATE messages SET status = %s
                         WHERE contact_id = %s AND role = 'assistant' AND tenant_slug = %s
-                          AND ts <= %s AND status IN ({placeholders})
-                          AND msg_id IS NOT NULL AND msg_id != %s""",
-                    (c_id, slug, c_ts, *prior_statuses, msg_id),
+                          AND ts <= %s AND status IN ({placeholders})""",
+                    (new_status, c_id, slug, c_ts, *prior_statuses),
                 )
-                prior_rows = cur.fetchall()
-                cascaded_ids = [r["msg_id"] for r in prior_rows]
-                
-                if cascaded_ids:
-                    cur.execute(
-                        f"""UPDATE messages SET status = %s
-                            WHERE contact_id = %s AND role = 'assistant' AND tenant_slug = %s
-                              AND ts <= %s AND status IN ({placeholders})""",
-                        (new_status, c_id, slug, c_ts, *prior_statuses),
-                    )
-                    updated_msg_ids.extend(cascaded_ids)
+                updated_msg_ids.extend(cascaded_ids)
         conn.commit()
     return updated_msg_ids
 

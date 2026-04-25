@@ -122,19 +122,19 @@ def count(phone: str | None = None, status: str | None = None) -> int:
 def prune(max_keep: int) -> int:
     """Delete oldest executions keeping only the most recent max_keep. Returns count deleted."""
     slug = pg._get_slug()
-    with pg.get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM executions WHERE tenant_slug = %s", (slug,))
-            total = cur.fetchone()[0]
-            if total <= max_keep:
-                return 0
-            cur.execute(
-                """DELETE FROM executions WHERE id NOT IN (
-                    SELECT id FROM executions WHERE tenant_slug = %s ORDER BY id DESC LIMIT %s
-                ) AND tenant_slug = %s""",
-                (slug, max_keep, slug),
-            )
-            count = cur.rowcount
+    with pg.dict_cursor() as (conn, cur):
+        cur.execute("SELECT COUNT(*) AS cnt FROM executions WHERE tenant_slug = %s", (slug,))
+        row = cur.fetchone()
+        total = row["cnt"] if row else 0
+        if total <= max_keep:
+            return 0
+        cur.execute(
+            """DELETE FROM executions WHERE id NOT IN (
+                SELECT id FROM executions WHERE tenant_slug = %s ORDER BY id DESC LIMIT %s
+            ) AND tenant_slug = %s""",
+            (slug, max_keep, slug),
+        )
+        count = cur.rowcount
         conn.commit()
     return count
 

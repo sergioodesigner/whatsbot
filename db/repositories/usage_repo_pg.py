@@ -159,43 +159,42 @@ def by_contact(start_ts: float | None = None,
     )
 
     results = []
-    with pg.get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            for row in rows:
-                contact_id = row["contact_id"]
-                cur.execute(
-                    f"""SELECT call_type,
-                               COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
-                               COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
-                               COALESCE(SUM(total_tokens), 0) AS total_tokens,
-                               COALESCE(SUM(cost_usd), 0.0) AS cost_usd,
-                               COUNT(*) AS call_count
-                        FROM usage WHERE contact_id = %s AND tenant_slug = %s{time_where}
-                        GROUP BY call_type""",
-                    [contact_id, slug] + time_params,
-                )
-                by_type_rows = cur.fetchall()
-                
-                by_type = {}
-                for r in by_type_rows:
-                    by_type[r["call_type"]] = {
-                        "prompt_tokens": r["prompt_tokens"],
-                        "completion_tokens": r["completion_tokens"],
-                        "total_tokens": r["total_tokens"],
-                        "cost_usd": r["cost_usd"],
-                        "call_count": r["call_count"],
-                    }
+    with pg.dict_cursor() as (conn, cur):
+        for row in rows:
+            contact_id = row["contact_id"]
+            cur.execute(
+                f"""SELECT call_type,
+                           COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+                           COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+                           COALESCE(SUM(total_tokens), 0) AS total_tokens,
+                           COALESCE(SUM(cost_usd), 0.0) AS cost_usd,
+                           COUNT(*) AS call_count
+                    FROM usage WHERE contact_id = %s AND tenant_slug = %s{time_where}
+                    GROUP BY call_type""",
+                [contact_id, slug] + time_params,
+            )
+            by_type_rows = cur.fetchall()
 
-                results.append({
-                    "phone": row["phone"],
-                    "name": row["name"] or "",
-                    "prompt_tokens": row["prompt_tokens"],
-                    "completion_tokens": row["completion_tokens"],
-                    "total_tokens": row["total_tokens"],
-                    "cost_usd": row["cost_usd"],
-                    "call_count": row["call_count"],
-                    "by_type": by_type,
-                })
+            by_type = {}
+            for r in by_type_rows:
+                by_type[r["call_type"]] = {
+                    "prompt_tokens": r["prompt_tokens"],
+                    "completion_tokens": r["completion_tokens"],
+                    "total_tokens": r["total_tokens"],
+                    "cost_usd": r["cost_usd"],
+                    "call_count": r["call_count"],
+                }
+
+            results.append({
+                "phone": row["phone"],
+                "name": row["name"] or "",
+                "prompt_tokens": row["prompt_tokens"],
+                "completion_tokens": row["completion_tokens"],
+                "total_tokens": row["total_tokens"],
+                "cost_usd": row["cost_usd"],
+                "call_count": row["call_count"],
+                "by_type": by_type,
+            })
 
     return results
 

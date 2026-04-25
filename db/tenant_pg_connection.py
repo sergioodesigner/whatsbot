@@ -11,6 +11,8 @@ from __future__ import annotations
 import logging
 import os
 
+from contextlib import contextmanager
+
 from db.master_pg_connection import get_pg_conn
 from server.tenant import current_tenant_slug
 
@@ -240,6 +242,21 @@ def _get_slug() -> str:
         return "single_tenant_default"
     return slug
 
+
+@contextmanager
+def dict_cursor():
+    """Context manager that yields (conn, cursor) with RealDictCursor.
+
+    Use this whenever a repository needs a raw cursor so that rows are always
+    returned as dicts (consistent with fetchone/fetchall helpers).
+    """
+    import psycopg2.extras
+    with get_pg_conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            yield conn, cur
+        finally:
+            cur.close()
 
 def fetchone(sql: str, params: tuple = ()) -> dict | None:
     with get_pg_conn() as conn:

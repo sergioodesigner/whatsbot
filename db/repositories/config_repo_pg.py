@@ -51,15 +51,14 @@ def set(key: str, value) -> None:
 def set_many(data: dict) -> None:
     """Set multiple config values at once."""
     slug = pg._get_slug()
-    with pg.get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            for k, v in data.items():
-                cur.execute(
-                    """
-                    INSERT INTO config (tenant_slug, key, value) 
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (tenant_slug, key) DO UPDATE SET value = EXCLUDED.value
-                    """,
-                    (slug, k, json.dumps(v, ensure_ascii=False)),
-                )
+    with pg.dict_cursor() as (conn, cur):
+        for k, v in data.items():
+            cur.execute(
+                """
+                INSERT INTO config (tenant_slug, key, value) 
+                VALUES (%s, %s, %s)
+                ON CONFLICT (tenant_slug, key) DO UPDATE SET value = EXCLUDED.value
+                """,
+                (slug, k, json.dumps(v, ensure_ascii=False)),
+            )
         conn.commit()

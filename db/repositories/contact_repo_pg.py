@@ -109,17 +109,16 @@ def update(contact_id: int, **fields) -> None:
 
 def increment_unread(contact_id: int, msg_id: str | None = None) -> None:
     slug = pg._get_slug()
-    with pg.get_pg_conn() as conn:
-        with conn.cursor() as cur:
+    with pg.dict_cursor() as (conn, cur):
+        cur.execute(
+            "UPDATE contacts SET unread_count = unread_count + 1, updated_at = %s WHERE id = %s AND tenant_slug = %s",
+            (time.time(), contact_id, slug),
+        )
+        if msg_id:
             cur.execute(
-                "UPDATE contacts SET unread_count = unread_count + 1, updated_at = %s WHERE id = %s AND tenant_slug = %s",
-                (time.time(), contact_id, slug),
+                "INSERT INTO unread_msg_ids (tenant_slug, contact_id, msg_id) VALUES (%s, %s, %s)",
+                (slug, contact_id, msg_id),
             )
-            if msg_id:
-                cur.execute(
-                    "INSERT INTO unread_msg_ids (tenant_slug, contact_id, msg_id) VALUES (%s, %s, %s)",
-                    (slug, contact_id, msg_id),
-                )
         conn.commit()
 
 
@@ -133,36 +132,34 @@ def increment_unread_ai(contact_id: int) -> None:
 
 def mark_as_read(contact_id: int) -> list[str]:
     slug = pg._get_slug()
-    with pg.get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT msg_id FROM unread_msg_ids WHERE contact_id = %s AND tenant_slug = %s", (contact_id, slug)
-            )
-            rows = cur.fetchall()
-            msg_ids = [r[0] for r in rows]
-            cur.execute("DELETE FROM unread_msg_ids WHERE contact_id = %s AND tenant_slug = %s", (contact_id, slug))
-            cur.execute(
-                "UPDATE contacts SET unread_count = 0, unread_ai_count = 0, updated_at = %s WHERE id = %s AND tenant_slug = %s",
-                (time.time(), contact_id, slug),
-            )
+    with pg.dict_cursor() as (conn, cur):
+        cur.execute(
+            "SELECT msg_id FROM unread_msg_ids WHERE contact_id = %s AND tenant_slug = %s", (contact_id, slug)
+        )
+        rows = cur.fetchall()
+        msg_ids = [r["msg_id"] for r in rows]
+        cur.execute("DELETE FROM unread_msg_ids WHERE contact_id = %s AND tenant_slug = %s", (contact_id, slug))
+        cur.execute(
+            "UPDATE contacts SET unread_count = 0, unread_ai_count = 0, updated_at = %s WHERE id = %s AND tenant_slug = %s",
+            (time.time(), contact_id, slug),
+        )
         conn.commit()
     return msg_ids
 
 
 def mark_user_messages_as_read(contact_id: int) -> list[str]:
     slug = pg._get_slug()
-    with pg.get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT msg_id FROM unread_msg_ids WHERE contact_id = %s AND tenant_slug = %s", (contact_id, slug)
-            )
-            rows = cur.fetchall()
-            msg_ids = [r[0] for r in rows]
-            cur.execute("DELETE FROM unread_msg_ids WHERE contact_id = %s AND tenant_slug = %s", (contact_id, slug))
-            cur.execute(
-                "UPDATE contacts SET unread_count = 0, updated_at = %s WHERE id = %s AND tenant_slug = %s",
-                (time.time(), contact_id, slug),
-            )
+    with pg.dict_cursor() as (conn, cur):
+        cur.execute(
+            "SELECT msg_id FROM unread_msg_ids WHERE contact_id = %s AND tenant_slug = %s", (contact_id, slug)
+        )
+        rows = cur.fetchall()
+        msg_ids = [r["msg_id"] for r in rows]
+        cur.execute("DELETE FROM unread_msg_ids WHERE contact_id = %s AND tenant_slug = %s", (contact_id, slug))
+        cur.execute(
+            "UPDATE contacts SET unread_count = 0, updated_at = %s WHERE id = %s AND tenant_slug = %s",
+            (time.time(), contact_id, slug),
+        )
         conn.commit()
     return msg_ids
 
@@ -178,16 +175,15 @@ def get_observations(contact_id: int) -> list[str]:
 
 def set_observations(contact_id: int, observations: list[str]) -> None:
     slug = pg._get_slug()
-    with pg.get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM observations WHERE contact_id = %s AND tenant_slug = %s", (contact_id, slug))
-            now = time.time()
-            for text in observations:
-                if text.strip():
-                    cur.execute(
-                        "INSERT INTO observations (tenant_slug, contact_id, text, created_at) VALUES (%s, %s, %s, %s)",
-                        (slug, contact_id, text, now)
-                    )
+    with pg.dict_cursor() as (conn, cur):
+        cur.execute("DELETE FROM observations WHERE contact_id = %s AND tenant_slug = %s", (contact_id, slug))
+        now = time.time()
+        for text in observations:
+            if text.strip():
+                cur.execute(
+                    "INSERT INTO observations (tenant_slug, contact_id, text, created_at) VALUES (%s, %s, %s, %s)",
+                    (slug, contact_id, text, now)
+                )
         conn.commit()
 
 
@@ -238,58 +234,57 @@ def list_contacts(q: str = "", archived: bool = False) -> list[dict]:
     )
 
     results = []
-    with pg.get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            for row in rows:
-                contact_id = row["id"]
-                cur.execute(
-                    """SELECT t.name FROM tags t
-                       JOIN contact_tags ct ON ct.tag_id = t.id
-                       WHERE ct.contact_id = %s AND ct.tenant_slug = %s AND t.tenant_slug = %s""",
-                    (contact_id, slug, slug),
-                )
-                tag_rows = cur.fetchall()
-                tags = [t[0] for t in tag_rows]
-                
-                last_content = ""
-                lmt = row["last_msg_media_type"]
-                if row["last_msg_content"] is not None:
-                    if lmt == "image":
-                        last_content = (row["last_msg_content"] or "")[:80] or "\U0001f4f7 Imagem"
-                    elif lmt == "audio":
-                        last_content = "\U0001f3a4 Áudio"
-                    elif lmt == "gif":
-                        last_content = "\U0001f39e\ufe0f GIF"
-                    elif lmt == "video":
-                        last_content = "\U0001f3ac Vídeo"
-                    else:
-                        last_content = (row["last_msg_content"] or "")[:80]
+    with pg.dict_cursor() as (conn, cur):
+        for row in rows:
+            contact_id = row["id"]
+            cur.execute(
+                """SELECT t.name FROM tags t
+                   JOIN contact_tags ct ON ct.tag_id = t.id
+                   WHERE ct.contact_id = %s AND ct.tenant_slug = %s AND t.tenant_slug = %s""",
+                (contact_id, slug, slug),
+            )
+            tag_rows = cur.fetchall()
+            tags = [t["name"] for t in tag_rows]
 
-                is_group = bool(row["is_group"])
-                group_name = row["group_name"] or ""
-                name = group_name if is_group else (row["name"] or "")
+            last_content = ""
+            lmt = row["last_msg_media_type"]
+            if row["last_msg_content"] is not None:
+                if lmt == "image":
+                    last_content = (row["last_msg_content"] or "")[:80] or "\U0001f4f7 Imagem"
+                elif lmt == "audio":
+                    last_content = "\U0001f3a4 Áudio"
+                elif lmt == "gif":
+                    last_content = "\U0001f39e\ufe0f GIF"
+                elif lmt == "video":
+                    last_content = "\U0001f3ac Vídeo"
+                else:
+                    last_content = (row["last_msg_content"] or "")[:80]
 
-                results.append({
-                    "id": contact_id,
-                    "phone": row["phone"],
-                    "name": name,
-                    "last_message": last_content,
-                    "last_message_role": row["last_msg_role"] or "",
-                    "last_message_ts": row["last_msg_ts"] or 0,
-                    "last_message_status": row["last_msg_status"] or "",
-                    "last_message_msg_id": row["last_msg_id"] or "",
-                    "msg_count": row["msg_count"] or 0,
-                    "unread_count": row["unread_count"],
-                    "unread_ai_count": row["unread_ai_count"],
-                    "ai_enabled": bool(row["ai_enabled"]),
-                    "is_group": is_group,
-                    "group_name": group_name,
-                    "is_archived": bool(row["is_archived"]),
-                    "archived_by_app": bool(row["archived_by_app"]) if row["archived_by_app"] is not None else False,
-                    "can_send": bool(row["can_send"]) if row["can_send"] is not None else True,
-                    "tags": tags,
-                    "updated_at": row["updated_at"],
-                })
+            is_group = bool(row["is_group"])
+            group_name = row["group_name"] or ""
+            name = group_name if is_group else (row["name"] or "")
+
+            results.append({
+                "id": contact_id,
+                "phone": row["phone"],
+                "name": name,
+                "last_message": last_content,
+                "last_message_role": row["last_msg_role"] or "",
+                "last_message_ts": row["last_msg_ts"] or 0,
+                "last_message_status": row["last_msg_status"] or "",
+                "last_message_msg_id": row["last_msg_id"] or "",
+                "msg_count": row["msg_count"] or 0,
+                "unread_count": row["unread_count"],
+                "unread_ai_count": row["unread_ai_count"],
+                "ai_enabled": bool(row["ai_enabled"]),
+                "is_group": is_group,
+                "group_name": group_name,
+                "is_archived": bool(row["is_archived"]),
+                "archived_by_app": bool(row["archived_by_app"]) if row["archived_by_app"] is not None else False,
+                "can_send": bool(row["can_send"]) if row["can_send"] is not None else True,
+                "tags": tags,
+                "updated_at": row["updated_at"],
+            })
 
     if q:
         ql = q.lower()
@@ -318,16 +313,15 @@ def get_full_contact(phone: str) -> dict | None:
     contact_id = row["id"]
     observations = get_observations(contact_id)
 
-    with pg.get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """SELECT t.name FROM tags t
-                   JOIN contact_tags ct ON ct.tag_id = t.id
-                   WHERE ct.contact_id = %s AND ct.tenant_slug = %s AND t.tenant_slug = %s""",
-                (contact_id, slug, slug),
-            )
-            tag_rows = cur.fetchall()
-            tags = [t[0] for t in tag_rows]
+    with pg.dict_cursor() as (conn, cur):
+        cur.execute(
+            """SELECT t.name FROM tags t
+               JOIN contact_tags ct ON ct.tag_id = t.id
+               WHERE ct.contact_id = %s AND ct.tenant_slug = %s AND t.tenant_slug = %s""",
+            (contact_id, slug, slug),
+        )
+        tag_rows = cur.fetchall()
+        tags = [t["name"] for t in tag_rows]
 
     data = _row_to_dict(row)
     data["info"] = {

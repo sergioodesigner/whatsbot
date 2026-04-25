@@ -73,21 +73,20 @@ def get_contact_tags(contact_id: int) -> list[str]:
 def set_contact_tags(contact_id: int, tag_names: list[str]) -> None:
     """Replace all tags for a contact with the given list."""
     slug = pg._get_slug()
-    with pg.get_pg_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM contact_tags WHERE contact_id = %s AND tenant_slug = %s", (contact_id, slug))
-            for name in tag_names:
-                cur.execute("SELECT id FROM tags WHERE name = %s AND tenant_slug = %s", (name, slug))
-                row = cur.fetchone()
-                if row:
-                    cur.execute(
-                        """
-                        INSERT INTO contact_tags (tenant_slug, contact_id, tag_id) 
-                        VALUES (%s, %s, %s)
-                        ON CONFLICT DO NOTHING
-                        """,
-                        (slug, contact_id, row["id"]),
-                    )
+    with pg.dict_cursor() as (conn, cur):
+        cur.execute("DELETE FROM contact_tags WHERE contact_id = %s AND tenant_slug = %s", (contact_id, slug))
+        for name in tag_names:
+            cur.execute("SELECT id FROM tags WHERE name = %s AND tenant_slug = %s", (name, slug))
+            row = cur.fetchone()
+            if row:
+                cur.execute(
+                    """
+                    INSERT INTO contact_tags (tenant_slug, contact_id, tag_id) 
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    (slug, contact_id, row["id"]),
+                )
         conn.commit()
 
 
