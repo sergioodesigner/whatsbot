@@ -40,6 +40,21 @@ def get_all(contact_id: int) -> list[dict]:
     return [_row_to_dict(r) for r in rows]
 
 
+def get_recent(contact_id: int, limit: int) -> list[dict]:
+    """Return the last *limit* messages for a contact, oldest first."""
+    if limit <= 0:
+        return []
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT * FROM (
+               SELECT * FROM messages WHERE contact_id = ?
+               ORDER BY ts DESC LIMIT ?
+           ) ORDER BY ts ASC""",
+        (contact_id, limit),
+    ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
 def get_context(contact_id: int, limit: int) -> list[dict]:
     """Return the last N eligible messages for LLM context.
 

@@ -1,6 +1,7 @@
 """Configuration endpoints (config, test-key, models, status)."""
 
 import asyncio
+import json
 import logging
 import time
 from typing import Any
@@ -43,6 +44,10 @@ def register_routes(app, deps):
             # Single-tenant mode (no master DB)
             global_enabled = True
             tenant_enabled = True
+        except Exception as exc:
+            logger.warning("[Config] master policy (api_models) unreadable: %s", exc)
+            global_enabled = True
+            tenant_enabled = True
         return global_enabled, tenant_enabled, global_enabled and tenant_enabled
 
     def _crm_policy() -> bool:
@@ -52,39 +57,97 @@ def register_routes(app, deps):
                 return bool(master_policy_repo.get_tenant(slug, "crm_enabled", True))
         except RuntimeError:
             return True
+        except Exception as exc:
+            logger.warning("[Config] master policy (crm_enabled) unreadable: %s", exc)
+            return True
         return True
+
+    def _normalize_webhook_domains(val: Any) -> list:
+        if val is None:
+            return []
+        if isinstance(val, list):
+            return val
+        if isinstance(val, str):
+            s = val.strip()
+            if not s:
+                return []
+            try:
+                parsed = json.loads(s)
+                return parsed if isinstance(parsed, list) else []
+            except (json.JSONDecodeError, TypeError):
+                return [s]
+        return []
 
     @app.get("/api/config")
     async def get_config():
-        global_enabled, tenant_enabled, effective_enabled = _api_models_policy()
-        return _ok({
-            "openrouter_api_key": _mask_key(settings.get("openrouter_api_key", "")),
-            "model": settings.get("model", "openai/gpt-4o-mini"),
-            "audio_model": settings.get("audio_model", "google/gemini-2.0-flash-001"),
-            "image_model": settings.get("image_model", "google/gemini-2.0-flash-001"),
-            "system_prompt": settings.get("system_prompt", ""),
-            "auto_reply": settings.get("auto_reply", True),
-            "max_context_messages": settings.get("max_context_messages", 10),
-            "message_batch_delay": settings.get("message_batch_delay", 3.0),
-            "split_messages": settings.get("split_messages", True),
-            "split_message_delay": settings.get("split_message_delay", 2.0),
-            "audio_transcription_enabled": settings.get("audio_transcription_enabled", True),
-            "image_transcription_enabled": settings.get("image_transcription_enabled", True),
-            "transfer_alert_enabled": settings.get("transfer_alert_enabled", True),
-            "transfer_alert_duration": settings.get("transfer_alert_duration", 5),
-            "max_executions": settings.get("max_executions", 200),
-            "default_ai_enabled": settings.get("default_ai_enabled", True),
-            "has_password": bool(settings.get("web_password_hash", "")),
-            "api_models_globally_enabled": global_enabled,
-            "api_models_enabled": tenant_enabled,
-            "api_models_effective_enabled": effective_enabled,
-            "crm_enabled": _crm_policy(),
-            "automation_webhook_allowed_domains": settings.get("automation_webhook_allowed_domains", []),
-            "automation_webhook_allow_http": settings.get("automation_webhook_allow_http", False),
-            "automation_webhook_block_private_hosts": settings.get("automation_webhook_block_private_hosts", True),
-            "automation_webhook_max_retries": settings.get("automation_webhook_max_retries", 1),
-            "automation_webhook_retry_backoff_seconds": settings.get("automation_webhook_retry_backoff_seconds", 0.8),
-        })
+        try:
+            global_enabled, tenant_enabled, effective_enabled = _api_models_policy()
+            domains = _normalize_webhook_domains(
+                settings.get("automation_webhook_allowed_domains", []),
+            )
+            return _ok({
+                "openrouter_api_key": _mask_key(settings.get("openrouter_api_key", "")),
+                "model": settings.get("model", "openai/gpt-4o-mini"),
+                "audio_model": settings.get("audio_model", "google/gemini-2.0-flash-001"),
+                "image_model": settings.get("image_model", "google/gemini-2.0-flash-001"),
+                "system_prompt": settings.get("system_prompt", ""),
+                "auto_reply": settings.get("auto_reply", True),
+                "max_context_messages": settings.get("max_context_messages", 10),
+                "message_batch_delay": settings.get("message_batch_delay", 3.0),
+                "split_messages": settings.get("split_messages", True),
+                "split_message_delay": settings.get("split_message_delay", 2.0),
+                "audio_transcription_enabled": settings.get("audio_transcription_enabled", True),
+                "image_transcription_enabled": settings.get("image_transcription_enabled", True),
+                "transfer_alert_enabled": settings.get("transfer_alert_enabled", True),
+                "transfer_alert_duration": settings.get("transfer_alert_duration", 5),
+                "max_executions": settings.get("max_executions", 200),
+                "default_ai_enabled": settings.get("default_ai_enabled", True),
+                "has_password": bool(settings.get("web_password_hash", "")),
+                "api_models_globally_enabled": global_enabled,
+                "api_models_enabled": tenant_enabled,
+                "api_models_effective_enabled": effective_enabled,
+                "crm_enabled": _crm_policy(),
+                "automation_webhook_allowed_domains": domains,
+                "automation_webhook_allow_http": settings.get("automation_webhook_allow_http", False),
+                "automation_webhook_block_private_hosts": settings.get(
+                    "automation_webhook_block_private_hosts", True
+                ),
+                "automation_webhook_max_retries": settings.get("automation_webhook_max_retries", 1),
+                "automation_webhook_retry_backoff_seconds": settings.get(
+                    "automation_webhook_retry_backoff_seconds", 0.8
+                ),
+            })
+        except Exception as exc:
+            logger.exception("[Config] GET /api/config failed: %s", exc)
+            return _ok({
+                "openrouter_api_key": "",
+                "model": "openai/gpt-4o-mini",
+                "audio_model": "google/gemini-2.0-flash-001",
+                "image_model": "google/gemini-2.0-flash-001",
+                "system_prompt": "",
+                "auto_reply": True,
+                "max_context_messages": 10,
+                "message_batch_delay": 3.0,
+                "split_messages": True,
+                "split_message_delay": 2.0,
+                "audio_transcription_enabled": True,
+                "image_transcription_enabled": True,
+                "transfer_alert_enabled": True,
+                "transfer_alert_duration": 5,
+                "max_executions": 200,
+                "default_ai_enabled": True,
+                "has_password": False,
+                "api_models_globally_enabled": True,
+                "api_models_enabled": True,
+                "api_models_effective_enabled": True,
+                "crm_enabled": True,
+                "automation_webhook_allowed_domains": [],
+                "automation_webhook_allow_http": False,
+                "automation_webhook_block_private_hosts": True,
+                "automation_webhook_max_retries": 1,
+                "automation_webhook_retry_backoff_seconds": 0.8,
+                "_config_degraded": True,
+            })
 
     @app.put("/api/config")
     async def save_config(body: dict):

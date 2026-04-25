@@ -43,7 +43,7 @@ export function createWebSocket(handlers) {
       }
       if (handlers.onDisconnect) handlers.onDisconnect();
       if (!closed) {
-        reconnectTimer = setTimeout(connect, 3000);
+        reconnectTimer = setTimeout(connect, 1200);
       }
     };
 

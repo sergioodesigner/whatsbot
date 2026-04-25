@@ -42,6 +42,22 @@ def get_all(contact_id: int) -> list[dict]:
     return [_row_to_dict(r) for r in rows]
 
 
+def get_recent(contact_id: int, limit: int) -> list[dict]:
+    """Return the last *limit* messages for a contact, oldest first."""
+    if limit <= 0:
+        return []
+    slug = pg._get_slug()
+    rows = pg.fetchall(
+        """SELECT * FROM (
+               SELECT * FROM messages
+               WHERE contact_id = %s AND tenant_slug = %s
+               ORDER BY ts DESC LIMIT %s
+           ) sub ORDER BY ts ASC""",
+        (contact_id, slug, limit),
+    )
+    return [_row_to_dict(r) for r in rows]
+
+
 def get_context(contact_id: int, limit: int) -> list[dict]:
     """Return the last N eligible messages for LLM context."""
     slug = pg._get_slug()

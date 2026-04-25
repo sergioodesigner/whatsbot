@@ -16,6 +16,7 @@ from gowa.client import GOWASendError, extract_msg_id
 
 from db.repositories import contact_repo, message_repo, crm_repo
 from server.helpers import _ok, _err
+from server.media_urls import enrich_message_media_path
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +279,12 @@ def register_routes(app, deps):
         })
 
     @app.get("/api/contacts/{phone}")
-    async def get_contact(phone: str, mark_read: bool = True):
+    async def get_contact(
+        phone: str,
+        mark_read: bool = True,
+        messages_full: bool = False,
+        messages_limit: int = 400,
+    ):
         """Return full contact data including conversation history."""
         def _load():
             data = contact_repo.get_full_contact(phone)
@@ -301,14 +307,23 @@ def register_routes(app, deps):
                     agent_handler._contacts[phone].unread_count = 0
                     agent_handler._contacts[phone].unread_ai_count = 0
             # Load messages and repair legacy media paths on-the-fly.
-            messages = message_repo.get_all(contact_id)
+            lim = 5000 if messages_full else max(50, min(int(messages_limit or 400), 5000))
+            messages = (
+                message_repo.get_all(contact_id)
+                if messages_full
+                else message_repo.get_recent(contact_id, lim)
+            )
             for m in messages:
                 media_path = m.get("media_path")
                 if m.get("media_type") in ("audio", "image", "video", "gif") and _should_repair_media_path(media_path):
                     repaired = _repair_media_path(m.get("media_path"))
                     if repaired and repaired != m.get("media_path"):
                         m["media_path"] = repaired
+                enrich_message_media_path(m)
             data["messages"] = messages
+            if not messages_full:
+                data["messages_window"] = lim
+                data["messages_may_have_older"] = len(messages) >= lim
             # Load usage for the full response
             data["usage"] = []
             # CRM snapshot for contact quick visibility in chat panel
@@ -428,6 +443,7 @@ def register_routes(app, deps):
         logger.info("[Send] Manual message to %s: %s", phone, message[:80])
 
         # Broadcast to all WS clients
+        enrich_message_media_path(msg_data)
         await ws_manager.broadcast("new_message", {
             "phone": phone,
             "message": msg_data,
@@ -553,6 +569,7 @@ def register_routes(app, deps):
         contact.add_message("assistant", caption, media_type="image", media_path=rel_path,
                             status="sent", msg_id=msg_id)
 
+        enrich_message_media_path(msg_data)
         await ws_manager.broadcast("new_message", {"phone": phone, "message": msg_data})
         logger.info("[Send] Image sent to %s", phone)
         return _ok({"message": "Imagem enviada."})
@@ -625,6 +642,7 @@ def register_routes(app, deps):
         contact.add_message("assistant", "[Áudio]", media_type="audio", media_path=rel_path,
                             status="sent", msg_id=msg_id)
 
+        enrich_message_media_path(msg_data)
         await ws_manager.broadcast("new_message", {"phone": phone, "message": msg_data})
         logger.info("[Send] Audio sent to %s", phone)
         return _ok({"message": "Áudio enviado."})

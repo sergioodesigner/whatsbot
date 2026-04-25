@@ -17,6 +17,7 @@ from gowa.client import GOWASendError, extract_msg_id
 from db.repositories import contact_repo, message_repo, crm_repo, master_policy_repo
 from server.execution import astart_execution, aend_execution, atrack_step, prune_executions
 from server.helpers import _ok
+from server.media_urls import enrich_message_media_path
 from server.tenant import current_tenant_slug
 
 logger = logging.getLogger(__name__)
@@ -1112,6 +1113,7 @@ def register_routes(app, deps):
             if media_type:
                 broadcast_msg["media_type"] = media_type
                 broadcast_msg["media_path"] = media_path
+            enrich_message_media_path(broadcast_msg)
             await ws_manager.broadcast("new_message", {
                 "phone": phone,
                 "message": broadcast_msg,
@@ -1250,6 +1252,7 @@ def register_routes(app, deps):
         if media_type:
             broadcast_msg["media_type"] = media_type
             broadcast_msg["media_path"] = media_path
+        enrich_message_media_path(broadcast_msg)
         await ws_manager.broadcast("new_message", {
             "phone": phone,
             "message": broadcast_msg,

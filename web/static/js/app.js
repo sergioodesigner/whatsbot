@@ -190,31 +190,34 @@ function App({ onLogout, hasPassword }) {
   const configRef = useRef(config);
   useEffect(() => { configRef.current = config; }, [config]);
 
-  useWebSocket({
-    onStatus: useCallback((data) => setStatus(data), []),
-    onQrUpdate: useCallback((data) => {
+  const wsHandlersRef = useRef({});
+  wsHandlersRef.current = {
+    onStatus: (data) => setStatus(data),
+    onQrUpdate: (data) => {
       setQrAvailable(data.available);
       if (data.version) setQrVersion(data.version);
-    }, []),
-    onGowaStatus: useCallback((data) => setNotification(data.message), []),
-    onConfigSaved: useCallback(() => setNotification('Configurações salvas!'), []),
-    onNewMessage: useCallback((data) => setNewMessage(data), []),
-    onChatPresence: useCallback((data) => setChatPresence(data), []),
-    onContactInfoUpdated: useCallback((data) => setContactInfoUpdated(data), []),
-    onTagsChanged: useCallback((data) => setTagsChanged(data), []),
-    onContactTagsUpdated: useCallback((data) => setContactTagsUpdated(data), []),
-    onHumanTransferAlert: useCallback(() => {
+    },
+    onGowaStatus: (data) => setNotification(data.message),
+    onConfigSaved: () => setNotification('Configurações salvas!'),
+    onNewMessage: (data) => setNewMessage(data),
+    onChatPresence: (data) => setChatPresence(data),
+    onContactInfoUpdated: (data) => setContactInfoUpdated(data),
+    onTagsChanged: (data) => setTagsChanged(data),
+    onContactTagsUpdated: (data) => setContactTagsUpdated(data),
+    onHumanTransferAlert: () => {
       const cfg = configRef.current;
       if (cfg && cfg.transfer_alert_enabled === false) return;
       const duration = cfg?.transfer_alert_duration || 5;
       playTransferAlert(duration);
-    }, []),
-    onContactAiToggled: useCallback((data) => setContactAiToggled(data), []),
-    onMessagesRead: useCallback((data) => setMessagesRead(data), []),
-    onMessageStatus: useCallback((data) => setMessageStatus(data), []),
-    onWsConnect: useCallback(() => setWsConnected(true), []),
-    onWsDisconnect: useCallback(() => setWsConnected(false), []),
-  });
+    },
+    onContactAiToggled: (data) => setContactAiToggled(data),
+    onMessagesRead: (data) => setMessagesRead(data),
+    onMessageStatus: (data) => setMessageStatus(data),
+    onWsConnect: () => setWsConnected(true),
+    onWsDisconnect: () => setWsConnected(false),
+  };
+
+  useWebSocket(wsHandlersRef);
 
   async function handleSave(data) {
     const result = await save(data);
