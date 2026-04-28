@@ -6,8 +6,6 @@ import { Sandbox } from './components/Sandbox.js';
 import { Contacts } from './components/Contacts.js';
 import { CostsDashboard } from './components/CostsDashboard.js';
 import { Executions } from './components/Executions.js';
-import { CrmBoard } from './components/CrmBoard.js';
-import { Automations } from './components/Automations.js';
 import { LoginScreen } from './components/LoginScreen.js';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { useConfig } from './hooks/useConfig.js';
@@ -16,8 +14,8 @@ import { playTransferAlert } from './utils/alertSound.js';
 
 const html = htm.bind(h);
 
-const ROUTES = { '/': 'contacts', '/dashboard': 'dashboard', '/sandbox': 'sandbox', '/costs': 'costs', '/executions': 'executions', '/crm': 'crm', '/automations': 'automations' };
-const TAB_PATHS = { contacts: '/', dashboard: '/dashboard', sandbox: '/sandbox', costs: '/costs', executions: '/executions', crm: '/crm', automations: '/automations' };
+const ROUTES = { '/': 'contacts', '/dashboard': 'dashboard', '/sandbox': 'sandbox', '/costs': 'costs', '/executions': 'executions' };
+const TAB_PATHS = { contacts: '/', dashboard: '/dashboard', sandbox: '/sandbox', costs: '/costs', executions: '/executions' };
 
 function tabFromPath() {
   const path = window.location.pathname;
@@ -62,7 +60,7 @@ function isEmbedMode() {
   return params.get('sa_embed') === '1';
 }
 
-function GearMenu({ tab, onTabChange, hasPassword, onLogout, crmEnabled }) {
+function GearMenu({ tab, onTabChange, hasPassword, onLogout }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -93,22 +91,6 @@ function GearMenu({ tab, onTabChange, hasPassword, onLogout, crmEnabled }) {
             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
             Painel
           </button>
-          ${crmEnabled ? html`
-            <button
-              onClick=${() => { onTabChange('crm'); setOpen(false); }}
-              class="w-full text-left px-4 py-2.5 text-[14px] hover:bg-wa-hover transition-colors flex items-center gap-2 ${tab === 'crm' ? 'text-wa-teal font-medium' : 'text-wa-text'}"
-            >
-              <span>📌</span>
-              CRM
-            </button>
-            <button
-              onClick=${() => { onTabChange('automations'); setOpen(false); }}
-              class="w-full text-left px-4 py-2.5 text-[14px] hover:bg-wa-hover transition-colors flex items-center gap-2 ${tab === 'automations' ? 'text-wa-teal font-medium' : 'text-wa-text'}"
-            >
-              <span>⚡</span>
-              Automações
-            </button>
-          ` : null}
           ${hasPassword ? html`
             <div class="border-t border-wa-border my-1"></div>
             <button
@@ -185,8 +167,6 @@ function App({ onLogout, hasPassword }) {
   }, []);
 
   const { config, loading, saving, save } = useConfig();
-  const crmEnabled = (config?.crm_enabled ?? true) === true;
-
   const configRef = useRef(config);
   useEffect(() => { configRef.current = config; }, [config]);
 
@@ -238,7 +218,7 @@ function App({ onLogout, hasPassword }) {
 
   return html`
     <div class="h-screen flex flex-col relative">
-      ${delegatedAccess ? null : html`<${GearMenu} tab=${tab} onTabChange=${setTab} hasPassword=${hasPassword} onLogout=${onLogout} crmEnabled=${crmEnabled} />`}
+      ${delegatedAccess ? null : html`<${GearMenu} tab=${tab} onTabChange=${setTab} hasPassword=${hasPassword} onLogout=${onLogout} />`}
 
       <main class="flex-1 overflow-auto ${tab !== 'contacts' ? 'bg-wa-panel' : ''}">
         ${tab === 'dashboard'
@@ -256,30 +236,6 @@ function App({ onLogout, hasPassword }) {
             </div>`
           : tab === 'contacts' && !delegatedAccess
             ? html`<${Contacts} newMessage=${newMessage} chatPresence=${chatPresence} contactInfoUpdated=${contactInfoUpdated} tagsChanged=${tagsChanged} contactTagsUpdated=${contactTagsUpdated} contactAiToggled=${contactAiToggled} messagesRead=${messagesRead} messageStatus=${messageStatus} initialContactId=${initialContactId} wsConnected=${wsConnected} config=${config} onConfigSave=${save} />`
-            : tab === 'crm' && !delegatedAccess
-              ? crmEnabled
-                ? html`<div class="max-w-6xl mx-auto p-4">
-                    <${PageHeader} title="CRM" onBack=${() => setTab('contacts')} hideBack=${embeddedView || delegatedAccess} />
-                    <${CrmBoard} />
-                  </div>`
-                : html`<div class="max-w-4xl mx-auto p-4">
-                    <${PageHeader} title="CRM" onBack=${() => setTab('contacts')} hideBack=${embeddedView || delegatedAccess} />
-                    <div class="bg-white rounded-xl border border-wa-border p-5 text-sm text-wa-secondary">
-                      O módulo CRM está desativado para esta empresa. Fale com o superadmin.
-                    </div>
-                  </div>`
-            : tab === 'automations' && !delegatedAccess
-              ? crmEnabled
-                ? html`<div class="max-w-6xl mx-auto p-4">
-                    <${PageHeader} title="Automações de CRM" onBack=${() => setTab('contacts')} hideBack=${embeddedView || delegatedAccess} />
-                    <${Automations} />
-                  </div>`
-                : html`<div class="max-w-4xl mx-auto p-4">
-                    <${PageHeader} title="Automações de CRM" onBack=${() => setTab('contacts')} hideBack=${embeddedView || delegatedAccess} />
-                    <div class="bg-white rounded-xl border border-wa-border p-5 text-sm text-wa-secondary">
-                      O módulo CRM está desativado para esta empresa. Fale com o superadmin.
-                    </div>
-                  </div>`
             : tab === 'costs'
               ? html`<div class="max-w-5xl mx-auto p-4">
                   <${PageHeader} title="Custos de IA" onBack=${() => setTab('contacts')} hideBack=${embeddedView || delegatedAccess} />

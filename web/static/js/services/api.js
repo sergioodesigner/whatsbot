@@ -265,63 +265,6 @@ export async function getBillingInvoices() {
   return request('GET', '/api/billing/invoices');
 }
 
-// ── CRM ────────────────────────────────────────────────────────────
-
-export async function getCrmBoard() {
-  return request('GET', '/api/crm/board');
-}
-
-export async function upsertCrmDeal(payload) {
-  return request('POST', '/api/crm/deals', payload);
-}
-
-export async function updateCrmDeal(dealId, payload) {
-  return request('PUT', `/api/crm/deals/${encodeURIComponent(String(dealId))}`, payload);
-}
-
-export async function getCrmTasks(dealId) {
-  return request('GET', `/api/crm/deals/${encodeURIComponent(String(dealId))}/tasks`);
-}
-
-export async function createCrmTask(dealId, payload) {
-  return request('POST', `/api/crm/deals/${encodeURIComponent(String(dealId))}/tasks`, payload);
-}
-
-export async function updateCrmTask(taskId, payload) {
-  return request('PUT', `/api/crm/tasks/${encodeURIComponent(String(taskId))}`, payload);
-}
-
-export async function deleteCrmTask(taskId) {
-  return request('DELETE', `/api/crm/tasks/${encodeURIComponent(String(taskId))}`);
-}
-
-// ── Automations ─────────────────────────────────────────────────────
-
-export async function getAutomationRules() {
-  return request('GET', '/api/automations/rules');
-}
-
-export async function createAutomationRule(payload) {
-  return request('POST', '/api/automations/rules', payload);
-}
-
-export async function updateAutomationRule(ruleId, payload) {
-  return request('PUT', `/api/automations/rules/${encodeURIComponent(String(ruleId))}`, payload);
-}
-
-export async function deleteAutomationRule(ruleId) {
-  return request('DELETE', `/api/automations/rules/${encodeURIComponent(String(ruleId))}`);
-}
-
-export async function simulateAutomationRule(ruleId, payload) {
-  return request('POST', `/api/automations/rules/${encodeURIComponent(String(ruleId))}/simulate`, payload);
-}
-
-export async function getAutomationRuns(params = {}) {
-  const qs = new URLSearchParams(params).toString();
-  return request('GET', `/api/automations/runs${qs ? '?' + qs : ''}`);
-}
-
 // ── Update ────────────────────────────────────────────────────────
 
 export async function checkForUpdates() {
