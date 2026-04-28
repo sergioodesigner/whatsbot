@@ -57,6 +57,32 @@ def _normalize_media_path(path: str | None) -> str | None:
     return clean
 
 
+def _wa_phone_key(phone: str) -> str:
+    if not phone:
+        return ""
+    return phone.split("@")[0].split(":")[0]
+
+
+def _matches_session_end(combined: str, phrase: str) -> bool:
+    if not (phrase or "").strip():
+        return False
+    return combined.strip().lower() == phrase.strip().lower()
+
+
+def _matches_reply_trigger(combined: str, phrase: str) -> bool:
+    if not (phrase or "").strip():
+        return True
+    return combined.strip().lower().startswith(phrase.strip().lower())
+
+
+def _is_private_self_chat(phone: str, bot_phone: str, config_bot_phone: str) -> bool:
+    if not phone or "@g.us" in phone:
+        return False
+    pk = _wa_phone_key(phone)
+    bk = _wa_phone_key(bot_phone or config_bot_phone or "")
+    return bool(pk and bk and pk == bk)
+
+
 def register_routes(app, deps):
     agent_handler = deps.agent_handler
     gowa_client = deps.gowa_client
@@ -575,22 +601,60 @@ def register_routes(app, deps):
                                 "message": {"role": "system_notice", "content": notice, "ts": time.time()},
                             })
                         else:
+                            cfg_trigger = (settings.get("ai_reply_trigger_phrase") or "").strip()
+                            gate_trigger = cfg_trigger
+                            if _is_private_self_chat(
+                                phone, state.bot_phone, settings.get("bot_phone") or ""
+                            ):
+                                gate_trigger = ""
+                            end_phrase = (settings.get("ai_session_end_phrase") or "").strip()
+                            strip_trigger = cfg_trigger if cfg_trigger else None
                             try:
-                                await asyncio.to_thread(gowa_client.send_chat_presence, phone)
-                                result = await asyncio.to_thread(
-                                    agent_handler.process_message, phone, combined,
-                                    save_user_message=False, save_response=False)
-                                if result.tool_calls:
-                                    await _broadcast_tool_calls(phone, result.tool_calls, result.contact_info)
-                                if result.reply:
-                                    if result.reply.startswith("[WhatsBot]"):
-                                        contact.add_message("system_notice", result.reply)
-                                        await ws_manager.broadcast("new_message", {
+                                if end_phrase and _matches_session_end(combined, end_phrase):
+                                    logger.info("[Batch] Session end phrase matched for %s", phone)
+                                    await asyncio.to_thread(gowa_client.send_chat_presence, phone)
+                                    result = await asyncio.to_thread(
+                                        agent_handler.process_message, phone, "",
+                                        save_user_message=False, save_response=False,
+                                        strip_reply_trigger=strip_trigger,
+                                    )
+                                    if result.tool_calls:
+                                        await _broadcast_tool_calls(phone, result.tool_calls, result.contact_info)
+                                    if result.reply:
+                                        if result.reply.startswith("[WhatsBot]"):
+                                            contact.add_message("system_notice", result.reply)
+                                            await ws_manager.broadcast("new_message", {
+                                                "phone": phone,
+                                                "message": {"role": "system_notice", "content": result.reply, "ts": time.time()},
+                                            })
+                                        else:
+                                            await _send_reply(phone, result.reply)
+                                    if settings.get("ai_end_session_disables_ai", True):
+                                        await asyncio.to_thread(contact.set_ai_enabled, False)
+                                        await ws_manager.broadcast("contact_ai_toggled", {
                                             "phone": phone,
-                                            "message": {"role": "system_notice", "content": result.reply, "ts": time.time()},
+                                            "ai_enabled": False,
                                         })
-                                    else:
-                                        await _send_reply(phone, result.reply)
+                                elif not _matches_reply_trigger(combined, gate_trigger):
+                                    logger.info("[Batch] Skipping AI for %s (reply trigger phrase not matched)", phone)
+                                else:
+                                    await asyncio.to_thread(gowa_client.send_chat_presence, phone)
+                                    result = await asyncio.to_thread(
+                                        agent_handler.process_message, phone, combined,
+                                        save_user_message=False, save_response=False,
+                                        strip_reply_trigger=strip_trigger,
+                                    )
+                                    if result.tool_calls:
+                                        await _broadcast_tool_calls(phone, result.tool_calls, result.contact_info)
+                                    if result.reply:
+                                        if result.reply.startswith("[WhatsBot]"):
+                                            contact.add_message("system_notice", result.reply)
+                                            await ws_manager.broadcast("new_message", {
+                                                "phone": phone,
+                                                "message": {"role": "system_notice", "content": result.reply, "ts": time.time()},
+                                            })
+                                        else:
+                                            await _send_reply(phone, result.reply)
                             except Exception as e:
                                 logger.error("[Batch] Agent error for %s: %s", phone, e)
                                 await atrack_step("error", {"error": str(e), "phase": "text_processing"}, status="error")
@@ -757,25 +821,63 @@ def register_routes(app, deps):
                 elif video_path:
                     llm_text = llm_text or "[Vídeo recebido]"
 
+                cfg_trigger_m = (settings.get("ai_reply_trigger_phrase") or "").strip()
+                gate_trigger_m = cfg_trigger_m
+                if _is_private_self_chat(
+                    phone, state.bot_phone, settings.get("bot_phone") or ""
+                ):
+                    gate_trigger_m = ""
+                end_phrase_m = (settings.get("ai_session_end_phrase") or "").strip()
+                strip_trigger_m = cfg_trigger_m if cfg_trigger_m else None
+
                 try:
-                    await asyncio.to_thread(gowa_client.send_chat_presence, phone)
-                    result = await asyncio.to_thread(
-                        agent_handler.process_message, phone,
-                        llm_text,
-                        save_user_message=False, save_response=False,
-                        image_path=image_path if (image_path and not transcription) else None,
-                    )
-                    if result.tool_calls:
-                        await _broadcast_tool_calls(phone, result.tool_calls, result.contact_info)
-                    if result.reply:
-                        if result.reply.startswith("[WhatsBot]"):
-                            contact.add_message("system_notice", result.reply)
-                            await ws_manager.broadcast("new_message", {
+                    if end_phrase_m and _matches_session_end(llm_text, end_phrase_m):
+                        logger.info("[Batch] Session end phrase matched (media) for %s", phone)
+                        await asyncio.to_thread(gowa_client.send_chat_presence, phone)
+                        result = await asyncio.to_thread(
+                            agent_handler.process_message, phone, "",
+                            save_user_message=False, save_response=False,
+                            strip_reply_trigger=strip_trigger_m,
+                        )
+                        if result.tool_calls:
+                            await _broadcast_tool_calls(phone, result.tool_calls, result.contact_info)
+                        if result.reply:
+                            if result.reply.startswith("[WhatsBot]"):
+                                contact.add_message("system_notice", result.reply)
+                                await ws_manager.broadcast("new_message", {
+                                    "phone": phone,
+                                    "message": {"role": "system_notice", "content": result.reply, "ts": time.time()},
+                                })
+                            else:
+                                await _send_reply(phone, result.reply)
+                        if settings.get("ai_end_session_disables_ai", True):
+                            await asyncio.to_thread(contact.set_ai_enabled, False)
+                            await ws_manager.broadcast("contact_ai_toggled", {
                                 "phone": phone,
-                                "message": {"role": "system_notice", "content": result.reply, "ts": time.time()},
+                                "ai_enabled": False,
                             })
-                        else:
-                            await _send_reply(phone, result.reply)
+                    elif not _matches_reply_trigger(llm_text, gate_trigger_m):
+                        logger.info("[Batch] Skipping AI for %s (media, reply trigger not matched)", phone)
+                    else:
+                        await asyncio.to_thread(gowa_client.send_chat_presence, phone)
+                        result = await asyncio.to_thread(
+                            agent_handler.process_message, phone,
+                            llm_text,
+                            save_user_message=False, save_response=False,
+                            image_path=image_path if (image_path and not transcription) else None,
+                            strip_reply_trigger=strip_trigger_m,
+                        )
+                        if result.tool_calls:
+                            await _broadcast_tool_calls(phone, result.tool_calls, result.contact_info)
+                        if result.reply:
+                            if result.reply.startswith("[WhatsBot]"):
+                                contact.add_message("system_notice", result.reply)
+                                await ws_manager.broadcast("new_message", {
+                                    "phone": phone,
+                                    "message": {"role": "system_notice", "content": result.reply, "ts": time.time()},
+                                })
+                            else:
+                                await _send_reply(phone, result.reply)
                 except Exception as e:
                     logger.error("[Batch] Agent error for %s (%s): %s", phone, media_label, e)
                     await atrack_step("error", {"error": str(e), "phase": f"{media_label}_processing"}, status="error")
@@ -1078,7 +1180,21 @@ def register_routes(app, deps):
                 logger.info("[Webhook] Ignoring echo-back for %s", phone)
                 return _ok({"status": "echo"})
 
-        # Sync outgoing messages sent from phone (not via our app)
+        # Sync outgoing messages sent from phone (not via our app).
+        # Exception: chat consigo mesmo com prefixo vira mensagem de usuário.
+        if is_from_me:
+            sc_prefix = (settings.get("self_chat_user_prefix") or "").strip()
+            bot_key = _wa_phone_key(state.bot_phone or settings.get("bot_phone") or "")
+            phone_key = _wa_phone_key(phone)
+            if sc_prefix and bot_key and phone_key == bot_key:
+                cap = (text or "").strip()
+                if cap.startswith(sc_prefix):
+                    text = cap[len(sc_prefix):].lstrip()
+                    is_from_me = False
+                elif (image_path or audio_path or gif_path or video_path) and cap.startswith(sc_prefix):
+                    text = cap[len(sc_prefix):].lstrip()
+                    is_from_me = False
+
         if is_from_me:
             # Determine media metadata
             media_type: str | None = None

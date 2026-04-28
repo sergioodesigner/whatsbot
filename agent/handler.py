@@ -303,7 +303,8 @@ class AgentHandler:
                         save_response: bool = True,
                         image_path: str | None = None,
                         audio_path: str | None = None,
-                        channel: str = "whatsapp") -> ProcessResult:
+                        channel: str = "whatsapp",
+                        strip_reply_trigger: str | None = None) -> ProcessResult:
         """Process an incoming message and return the AI response."""
         if not self.api_key:
             return ProcessResult(reply="[WhatsBot] API key não configurada.")
@@ -324,6 +325,21 @@ class AgentHandler:
             contact.add_message("user", text or "", media_type=media_type, media_path=media_path)
 
         context_messages = contact.get_context_messages(self.max_context_messages)
+        trigger = (strip_reply_trigger or "").strip()
+        # Avoid stripping a 1-char prefix to prevent accidental mangling.
+        if len(trigger) >= 2 and context_messages:
+            patched = list(context_messages)
+            for i in range(len(patched) - 1, -1, -1):
+                if patched[i].get("role") != "user":
+                    continue
+                raw = patched[i].get("content") or ""
+                if isinstance(raw, list):
+                    break
+                if raw.lower().startswith(trigger.lower()):
+                    cut = raw[len(trigger):].lstrip()
+                    patched[i] = {**patched[i], "content": cut if cut else raw}
+                break
+            context_messages = patched
 
         tools = WHATSAPP_TOOLS if channel == "whatsapp" else ALL_TOOLS
 

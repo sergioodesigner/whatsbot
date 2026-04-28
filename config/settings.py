@@ -61,6 +61,10 @@ DEFAULT_CONFIG = {
     "bot_phone": "",
     "bot_name": "",
     "default_ai_enabled": True,
+    "ai_reply_trigger_phrase": "",
+    "ai_session_end_phrase": "",
+    "self_chat_user_prefix": "",
+    "ai_end_session_disables_ai": True,
     "web_password_hash": "",
     "web_password_salt": "",
 }

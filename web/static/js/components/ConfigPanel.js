@@ -30,6 +30,10 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
   const [transferAlertEnabled, setTransferAlertEnabled] = useState(true);
   const [transferAlertDuration, setTransferAlertDuration] = useState(5);
   const [defaultAiEnabled, setDefaultAiEnabled] = useState(true);
+  const [aiReplyTriggerPhrase, setAiReplyTriggerPhrase] = useState('');
+  const [aiSessionEndPhrase, setAiSessionEndPhrase] = useState('');
+  const [selfChatUserPrefix, setSelfChatUserPrefix] = useState('');
+  const [aiEndSessionDisablesAi, setAiEndSessionDisablesAi] = useState(true);
   const [webPassword, setWebPassword] = useState('');
   const [webPasswordConfirm, setWebPasswordConfirm] = useState('');
   const [removePassword, setRemovePassword] = useState(false);
@@ -67,6 +71,10 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
       setTransferAlertEnabled(config.transfer_alert_enabled ?? true);
       setTransferAlertDuration(config.transfer_alert_duration ?? 5);
       setDefaultAiEnabled(config.default_ai_enabled ?? true);
+      setAiReplyTriggerPhrase(config.ai_reply_trigger_phrase ?? '');
+      setAiSessionEndPhrase(config.ai_session_end_phrase ?? '');
+      setSelfChatUserPrefix(config.self_chat_user_prefix ?? '');
+      setAiEndSessionDisablesAi(config.ai_end_session_disables_ai ?? true);
     }
   }, [config]);
 
@@ -97,6 +105,10 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
       transfer_alert_enabled: transferAlertEnabled,
       transfer_alert_duration: parseInt(transferAlertDuration, 10) || 5,
       default_ai_enabled: defaultAiEnabled,
+      ai_reply_trigger_phrase: aiReplyTriggerPhrase.trim(),
+      ai_session_end_phrase: aiSessionEndPhrase.trim(),
+      self_chat_user_prefix: selfChatUserPrefix.trim(),
+      ai_end_session_disables_ai: aiEndSessionDisablesAi,
     };
     // Handle password change/removal
     if (removePassword) {
@@ -147,6 +159,60 @@ export function ConfigPanel({ config, saving, onSave, onNotify }) {
           />
           IA ativada por padrão para novos contatos
         </label>
+      <//>
+
+      <!-- Section: Gatilhos -->
+      <${Section} title="Gatilhos de conversa">
+        <p class="text-xs text-wa-secondary leading-relaxed">
+          Use uma <strong class="text-wa-text font-medium">frase de ativação</strong> para a IA responder
+          apenas quando a mensagem agrupada começar com esse texto.
+          Uma <strong class="text-wa-text font-medium">frase de encerramento</strong> gera despedida da IA
+          e pode desativar o agente no contato.
+          No <strong class="text-wa-text font-medium">chat consigo mesmo</strong>, você pode usar um prefixo
+          próprio para tratar mensagens como entrada de usuário para a IA.
+        </p>
+        <div>
+          <label class="block text-sm font-semibold text-wa-text mb-1">Frase de ativação (opcional)</label>
+          <input
+            type="text"
+            value=${aiReplyTriggerPhrase}
+            onInput=${(e) => setAiReplyTriggerPhrase(e.target.value)}
+            placeholder="Ex.: !bot ou #ia"
+            class="w-full bg-wa-panel text-wa-text px-3 py-2 rounded-lg text-sm border border-wa-border focus:border-wa-teal focus:outline-none font-mono"
+          />
+          <span class="text-xs text-wa-secondary">Deixe vazio para responder qualquer mensagem.</span>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-wa-text mb-1">Frase de encerramento (opcional)</label>
+          <input
+            type="text"
+            value=${aiSessionEndPhrase}
+            onInput=${(e) => setAiSessionEndPhrase(e.target.value)}
+            placeholder="Ex.: encerrar atendimento"
+            class="w-full bg-wa-panel text-wa-text px-3 py-2 rounded-lg text-sm border border-wa-border focus:border-wa-teal focus:outline-none"
+          />
+          <span class="text-xs text-wa-secondary">A mensagem precisa ser exatamente esta frase (ignora maiúsculas/minúsculas).</span>
+        </div>
+        <label class="flex items-center gap-3 text-sm font-semibold text-wa-text cursor-pointer p-3 rounded-lg border ${aiEndSessionDisablesAi ? 'bg-green-50 border-green-200' : 'bg-wa-panel border-wa-border'}">
+          <input
+            type="checkbox"
+            checked=${aiEndSessionDisablesAi}
+            onChange=${(e) => setAiEndSessionDisablesAi(e.target.checked)}
+            class="w-4 h-4 rounded border-wa-border accent-wa-teal"
+          />
+          Ao encerrar, desativar IA neste contato
+        </label>
+        <div>
+          <label class="block text-sm font-semibold text-wa-text mb-1">Prefixo no chat comigo mesmo (opcional)</label>
+          <input
+            type="text"
+            value=${selfChatUserPrefix}
+            onInput=${(e) => setSelfChatUserPrefix(e.target.value)}
+            placeholder="Ex.: #bot "
+            class="w-full bg-wa-panel text-wa-text px-3 py-2 rounded-lg text-sm border border-wa-border focus:border-wa-teal focus:outline-none font-mono"
+          />
+          <span class="text-xs text-wa-secondary">No seu próprio número, mensagens com esse prefixo viram entrada de usuário para a IA.</span>
+        </div>
       <//>
 
       <!-- Section: System Prompt -->
