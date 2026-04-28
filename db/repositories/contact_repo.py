@@ -5,6 +5,11 @@ import time
 from db.connection import get_db
 
 
+def normalize_cpf(cpf: str) -> str:
+    """Normalize CPF to digits only."""
+    return "".join(ch for ch in str(cpf or "") if ch.isdigit())
+
+
 def _br_phone_variants(phone: str) -> list[str]:
     """Return phone number variants for Brazilian numbers.
 
@@ -52,6 +57,8 @@ def get_or_create(phone: str, default_ai_enabled: bool = True) -> dict:
         "profession": "",
         "company": "",
         "address": "",
+        "cpf": "",
+        "birth_date": "",
         "ai_enabled": default_ai_enabled,
         "is_group": False,
         "group_name": "",
@@ -89,6 +96,21 @@ def get_by_phone(phone: str) -> dict | None:
     placeholders = ",".join("?" for _ in variants)
     row = conn.execute(
         f"SELECT * FROM contacts WHERE phone IN ({placeholders})", variants
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_to_dict(row)
+
+
+def get_by_cpf(cpf: str) -> dict | None:
+    """Get a contact by CPF (normalized). Returns None if not found."""
+    normalized = normalize_cpf(cpf)
+    if not normalized:
+        return None
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM contacts WHERE cpf = ?",
+        (normalized,),
     ).fetchone()
     if row is None:
         return None
@@ -359,6 +381,8 @@ def get_full_contact(phone: str) -> dict | None:
         "profession": row["profession"],
         "company": row["company"],
         "address": row["address"],
+        "cpf": row["cpf"],
+        "birth_date": row["birth_date"],
         "observations": observations,
     }
     data["tags"] = tags
@@ -375,6 +399,8 @@ def _row_to_dict(row) -> dict:
         "profession": row["profession"],
         "company": row["company"],
         "address": row["address"],
+        "cpf": row["cpf"] if "cpf" in row.keys() else "",
+        "birth_date": row["birth_date"] if "birth_date" in row.keys() else "",
         "ai_enabled": bool(row["ai_enabled"]),
         "is_group": bool(row["is_group"]),
         "group_name": row["group_name"],

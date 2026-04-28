@@ -128,3 +128,22 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE contacts ADD COLUMN can_send INTEGER NOT NULL DEFAULT 1")
         conn.commit()
         logger.info("Migration: added can_send column to contacts")
+
+    if "cpf" not in cols:
+        conn.execute("ALTER TABLE contacts ADD COLUMN cpf TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+        logger.info("Migration: added cpf column to contacts")
+
+    if "birth_date" not in cols:
+        conn.execute("ALTER TABLE contacts ADD COLUMN birth_date TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+        logger.info("Migration: added birth_date column to contacts")
+
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_cpf_unique
+        ON contacts(cpf)
+        WHERE cpf IS NOT NULL AND cpf <> ''
+        """
+    )
+    conn.commit()

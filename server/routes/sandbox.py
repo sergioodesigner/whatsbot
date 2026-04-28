@@ -32,7 +32,12 @@ def register_routes(app, deps):
 
         try:
             await atrack_step("webhook_received", {"phone": phone, "message_preview": message[:200]})
-            result = await asyncio.to_thread(agent_handler.process_message, phone, message)
+            result = await asyncio.to_thread(
+                agent_handler.process_message,
+                phone,
+                message,
+                channel="panel",
+            )
             await atrack_step("response_sent", {
                 "phone": phone,
                 "reply_preview": result.reply[:200] if result.reply else "",

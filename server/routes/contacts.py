@@ -743,6 +743,9 @@ def register_routes(app, deps):
                 email=body.get("email", ""),
                 profession=body.get("profession", ""),
                 company=body.get("company", ""),
+                address=body.get("address", ""),
+                cpf=body.get("cpf", ""),
+                birth_date=body.get("birth_date", ""),
             )
             # Observations: replace entire list (update_info only appends)
             if "observations" in body:

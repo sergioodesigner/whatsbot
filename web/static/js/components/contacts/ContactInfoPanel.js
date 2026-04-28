@@ -14,7 +14,16 @@ const TAG_COLORS = [
 // ── Contact Info Panel (WhatsApp Web style slide-in) ─────────────
 
 export function ContactInfoPanel({ phone, info, contactTags, globalTags, onGlobalTagsChange, isGroup, groupName, onClose, onSave }) {
-  const [form, setForm] = useState({ name: '', email: '', profession: '', company: '', address: '', observations: [] });
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    profession: '',
+    company: '',
+    address: '',
+    cpf: '',
+    birth_date: '',
+    observations: [],
+  });
   const [tags, setTags] = useState([]);
   const [saving, setSaving] = useState(false);
   const [newObs, setNewObs] = useState('');
@@ -53,6 +62,8 @@ export function ContactInfoPanel({ phone, info, contactTags, globalTags, onGloba
         profession: info.profession || '',
         company: info.company || '',
         address: info.address || '',
+        cpf: info.cpf || '',
+        birth_date: info.birth_date || '',
         observations: [...(info.observations || [])],
       });
     }
@@ -143,6 +154,8 @@ export function ContactInfoPanel({ phone, info, contactTags, globalTags, onGloba
     { key: 'profession', label: 'Profissão', placeholder: 'Ex: Desenvolvedor' },
     { key: 'company', label: 'Empresa', placeholder: 'Nome da empresa' },
     { key: 'address', label: 'Endereço', placeholder: 'Rua, número, bairro' },
+    { key: 'cpf', label: 'CPF', placeholder: '000.000.000-00' },
+    { key: 'birth_date', label: 'Data de nascimento', placeholder: 'DD/MM/AAAA' },
   ];
 
   return html`

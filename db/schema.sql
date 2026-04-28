@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS contacts (
     profession      TEXT    NOT NULL DEFAULT '',
     company         TEXT    NOT NULL DEFAULT '',
     address         TEXT    NOT NULL DEFAULT '',
+    cpf             TEXT    NOT NULL DEFAULT '',
+    birth_date      TEXT    NOT NULL DEFAULT '',
     ai_enabled      INTEGER NOT NULL DEFAULT 1,
     is_group        INTEGER NOT NULL DEFAULT 0,
     group_name      TEXT    NOT NULL DEFAULT '',
@@ -24,6 +26,9 @@ CREATE TABLE IF NOT EXISTS contacts (
 );
 CREATE INDEX IF NOT EXISTS idx_contacts_updated ON contacts(updated_at);
 CREATE INDEX IF NOT EXISTS idx_contacts_archived ON contacts(is_archived);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_cpf_unique
+    ON contacts(cpf)
+    WHERE cpf IS NOT NULL AND cpf <> '';
 
 CREATE TABLE IF NOT EXISTS observations (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -10,8 +10,8 @@ from pathlib import Path
 from openai import OpenAI
 
 from agent.memory import ContactMemory, TagRegistry, _build_image_content
-from agent.tools import ALL_TOOLS
-from db.repositories import message_repo, contact_repo
+from agent.tools import ALL_TOOLS, WHATSAPP_TOOLS
+from db.repositories import message_repo, contact_repo, crm_repo
 from agent.execution import track_step
 
 logger = logging.getLogger(__name__)
@@ -224,7 +224,7 @@ class AgentHandler:
             self._contacts[phone] = ContactMemory(phone, default_ai_enabled=self.default_ai_enabled)
         return self._contacts[phone]
 
-    def _build_system_prompt(self, contact: ContactMemory) -> str:
+    def _build_system_prompt(self, contact: ContactMemory, *, channel: str = "whatsapp") -> str:
         """Build system prompt with contact info and current date/time injected."""
         prompt = self.system_prompt
         if contact.is_group:
@@ -254,6 +254,19 @@ class AgentHandler:
             "foram enviadas por um atendente real, não por você. Considere o contexto "
             "mas não imite o estilo do operador."
         )
+        if channel == "whatsapp":
+            prompt += (
+                "\n\n--- Política de canal (WhatsApp) ---\n"
+                "Você atende APENAS o fluxo de pedido do cliente final.\n"
+                "Você NÃO executa suporte administrativo, ajustes de sistema, configuração, "
+                "ou tarefas internas da empresa por aqui.\n"
+                "Se alguém pedir ações de admin, instrua de forma breve para usar a IA dentro do painel.\n"
+                "Antes de criar pedido, colete e salve naturalmente os dados obrigatórios do cliente: "
+                "nome completo, endereço, CPF e data de nascimento.\n"
+                "Use save_contact_info sempre que o cliente informar algum desses dados.\n"
+                "Só use create_order quando esses dados já estiverem completos.\n"
+                "--- Fim da política ---"
+            )
         _BRT = timezone(timedelta(hours=-3))
         now = datetime.now(_BRT)
         dias = ["segunda-feira", "terça-feira", "quarta-feira",
@@ -289,7 +302,8 @@ class AgentHandler:
                         save_user_message: bool = True,
                         save_response: bool = True,
                         image_path: str | None = None,
-                        audio_path: str | None = None) -> ProcessResult:
+                        audio_path: str | None = None,
+                        channel: str = "whatsapp") -> ProcessResult:
         """Process an incoming message and return the AI response."""
         if not self.api_key:
             return ProcessResult(reply="[WhatsBot] API key não configurada.")
@@ -311,8 +325,10 @@ class AgentHandler:
 
         context_messages = contact.get_context_messages(self.max_context_messages)
 
+        tools = WHATSAPP_TOOLS if channel == "whatsapp" else ALL_TOOLS
+
         messages = [
-            {"role": "system", "content": self._build_system_prompt(contact)},
+            {"role": "system", "content": self._build_system_prompt(contact, channel=channel)},
             *context_messages,
         ]
 
@@ -321,12 +337,12 @@ class AgentHandler:
             track_step("llm_request", {
                 "model": self.model,
                 "context_messages": len(messages) - 1,
-                "tools": [t["function"]["name"] for t in ALL_TOOLS],
+                "tools": [t["function"]["name"] for t in tools],
             })
             response = client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                tools=ALL_TOOLS,
+                tools=tools,
                 tool_choice="auto",
                 max_tokens=1024,
             )
@@ -353,9 +369,62 @@ class AgentHandler:
                         args = {}
 
                     # Dispatch tool execution
-                    if tool_name == "save_contact_info":
+                    if tool_name == "create_order":
                         try:
-                            contact.update_info(**args)
+                            missing_fields = []
+                            current_name = str(contact.info.get("name", "") or "").strip()
+                            if not current_name or current_name.startswith("~"):
+                                missing_fields.append("nome completo")
+                            if not str(contact.info.get("address", "") or "").strip():
+                                missing_fields.append("endereço")
+                            if not str(contact.info.get("cpf", "") or "").strip():
+                                missing_fields.append("CPF")
+                            if not str(contact.info.get("birth_date", "") or "").strip():
+                                missing_fields.append("data de nascimento")
+
+                            if missing_fields:
+                                logger.info(
+                                    "Skipped create_order for %s due to missing required fields: %s",
+                                    sender,
+                                    ", ".join(missing_fields),
+                                )
+                                executed_tools.append(
+                                    {"tool": tool_name, "args": args, "status": "blocked_missing_info", "missing_fields": missing_fields}
+                                )
+                                track_step(
+                                    "tool_blocked",
+                                    {"tool": tool_name, "reason": "missing_required_info", "missing_fields": missing_fields},
+                                    status="warning",
+                                )
+                                continue
+
+                            payload = {
+                                "contact_phone": sender,
+                                "title": str(args.get("title", "") or "Pedido via WhatsApp").strip(),
+                                "stage": "novo",
+                                "origin": "whatsapp_ai_order",
+                                "potential_value": float(args.get("potential_value") or 0.0),
+                                "notes": str(args.get("notes", "") or "").strip(),
+                            }
+                            crm_repo.upsert_deal(payload)
+                        except Exception as e:
+                            logger.warning("Failed to execute %s for %s: %s", tool_name, sender, e)
+                    elif tool_name == "save_contact_info":
+                        try:
+                            normalized_cpf = contact_repo.normalize_cpf(args.get("cpf", ""))
+                            if normalized_cpf:
+                                existing_cpf = contact_repo.get_by_cpf(normalized_cpf)
+                                if existing_cpf and existing_cpf.get("id") != contact.id:
+                                    logger.info(
+                                        "Skipping CPF update for %s due to existing CPF in contact id %s",
+                                        sender,
+                                        existing_cpf.get("id"),
+                                    )
+                                    args = {k: v for k, v in args.items() if k != "cpf"}
+                                else:
+                                    args["cpf"] = normalized_cpf
+
+                            contact.update_info(overwrite_existing=False, **args)
                         except Exception as e:
                             logger.warning("Failed to execute %s for %s: %s", tool_name, sender, e)
                     elif tool_name == "transfer_to_human":
@@ -376,13 +445,24 @@ class AgentHandler:
                 if not msg.content:
                     messages.append(msg.model_dump())
                     tool_results = {
+                        "create_order": "Pedido criado com sucesso. Confirme ao cliente de forma curta e objetiva.",
                         "transfer_to_human": "Transferência realizada. Responda ao cliente de forma curta e natural, apenas confirmando que já vai ser atendido pela pessoa solicitada. NÃO mencione 'humano', 'atendente' nem 'transferência'.",
                     }
                     for tc in msg.tool_calls:
+                        content = tool_results.get(tc.function.name, "Informações salvas com sucesso.")
+                        if tc.function.name == "create_order":
+                            for item in executed_tools:
+                                if item.get("tool") == "create_order" and item.get("status") == "blocked_missing_info":
+                                    missing = ", ".join(item.get("missing_fields", []))
+                                    content = (
+                                        "Ainda faltam dados obrigatórios para criar o pedido. "
+                                        f"Peça ao cliente apenas os campos faltantes: {missing}."
+                                    )
+                                    break
                         messages.append({
                             "role": "tool",
                             "tool_call_id": tc.id,
-                            "content": tool_results.get(tc.function.name, "Informações salvas com sucesso."),
+                            "content": content,
                         })
                     track_step("llm_request", {"model": self.model, "type": "followup"})
                     follow_up = client.chat.completions.create(

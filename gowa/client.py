@@ -201,10 +201,26 @@ class GOWAClient:
             logger.warning("get_qr_code: no qr_link in response. keys=%s", list(results.keys()))
             return None
 
-        # Download the QR image (use urlparse to extract path safely)
-        qr_path = urlparse(qr_link).path
-        logger.info("get_qr_code: fetching QR image from %s", qr_path)
-        image_data = self._request("GET", qr_path, raw=True)
+        # Download QR image preserving query params. Some GOWA builds return
+        # signed URLs where dropping the query makes the image invalid.
+        parsed = urlparse(qr_link)
+        if parsed.scheme and parsed.netloc:
+            qr_url = qr_link
+            logger.info("get_qr_code: fetching QR image from absolute URL")
+            try:
+                with httpx.Client(timeout=self.timeout) as client:
+                    resp = client.get(qr_url)
+                    resp.raise_for_status()
+                    image_data = resp.content
+            except Exception as e:
+                logger.warning("get_qr_code: failed to fetch absolute qr_link: %s", e)
+                image_data = None
+        else:
+            qr_path = parsed.path or qr_link
+            if parsed.query:
+                qr_path = f"{qr_path}?{parsed.query}"
+            logger.info("get_qr_code: fetching QR image from %s", qr_path)
+            image_data = self._request("GET", qr_path, raw=True)
         if image_data and isinstance(image_data, bytes) and len(image_data) > 100:
             return image_data
         logger.warning("get_qr_code: QR image download failed or too small (%s bytes).",

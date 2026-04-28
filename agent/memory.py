@@ -67,7 +67,16 @@ class ContactMemory:
         self.phone = phone
         self._default_ai_enabled = default_ai_enabled
         self.id: int | None = None
-        self.info: dict = {"name": "", "email": "", "profession": "", "company": "", "address": "", "observations": []}
+        self.info: dict = {
+            "name": "",
+            "email": "",
+            "profession": "",
+            "company": "",
+            "address": "",
+            "cpf": "",
+            "birth_date": "",
+            "observations": [],
+        }
         self.tags: list[str] = []
         self.ai_enabled: bool = True
         self.is_group: bool = False
@@ -103,6 +112,8 @@ class ContactMemory:
             "profession": data["profession"],
             "company": data["company"],
             "address": data["address"],
+            "cpf": data.get("cpf", ""),
+            "birth_date": data.get("birth_date", ""),
             "observations": observations,
         }
 
@@ -124,6 +135,8 @@ class ContactMemory:
             profession=self.info.get("profession", ""),
             company=self.info.get("company", ""),
             address=self.info.get("address", ""),
+            cpf=self.info.get("cpf", ""),
+            birth_date=self.info.get("birth_date", ""),
             ai_enabled=1 if self.ai_enabled else 0,
             is_group=1 if self.is_group else 0,
             group_name=self.group_name,
@@ -230,12 +243,21 @@ class ContactMemory:
             self.info["name"] = new_name
             contact_repo.update(self.id, name=new_name)
 
-    def update_info(self, **kwargs):
-        """Update contact info fields. Only overwrites non-empty values."""
+    def update_info(self, overwrite_existing: bool = True, **kwargs):
+        """Update contact info fields.
+
+        When overwrite_existing=False, only fills missing values.
+        """
         fields_to_update = {}
-        for key in ("name", "email", "profession", "company", "address"):
+        for key in ("name", "email", "profession", "company", "address", "cpf", "birth_date"):
             val = kwargs.get(key, "")
             if val:
+                if key == "cpf":
+                    val = contact_repo.normalize_cpf(val)
+                    if not val:
+                        continue
+                if not overwrite_existing and self.info.get(key):
+                    continue
                 self.info[key] = val
                 fields_to_update[key] = val
         if fields_to_update:
@@ -269,6 +291,10 @@ class ContactMemory:
             parts.append(f"Empresa: {self.info['company']}")
         if self.info.get("address"):
             parts.append(f"Endereço: {self.info['address']}")
+        if self.info.get("cpf"):
+            parts.append(f"CPF: {self.info['cpf']}")
+        if self.info.get("birth_date"):
+            parts.append(f"Data de nascimento: {self.info['birth_date']}")
         for obs in self.info.get("observations", []):
             parts.append(f"Obs: {obs}")
         return "\n".join(parts)

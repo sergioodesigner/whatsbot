@@ -34,6 +34,14 @@ SAVE_CONTACT_INFO_TOOL = {
                     "type": "string",
                     "description": "Endereço completo do contato (rua, número, bairro, cidade)",
                 },
+                "cpf": {
+                    "type": "string",
+                    "description": "CPF do contato (somente do titular do pedido)",
+                },
+                "birth_date": {
+                    "type": "string",
+                    "description": "Data de nascimento no formato DD/MM/AAAA",
+                },
                 "observation": {
                     "type": "string",
                     "description": "Qualquer outra informação relevante sobre o contato",
